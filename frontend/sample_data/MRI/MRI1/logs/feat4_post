@@ -1,0 +1,134 @@
+</pre><hr>Post-stats<br><pre>
+
+/usr/local/fsl/bin/contrast_mgr -f design.fts stats design.con
+
+/usr/local/fsl/bin/fslmaths stats/zstat1 -mas mask thresh_zstat1
+
+echo 45037 > thresh_zstat1.vol
+zstat1: DLH=0.387652 VOLUME=45037 RESELS=11.9493
+
+/usr/local/fsl/bin/fslmaths stats/zstat2 -mas mask thresh_zstat2
+
+echo 45037 > thresh_zstat2.vol
+zstat2: DLH=0.387652 VOLUME=45037 RESELS=11.9493
+
+/usr/local/fsl/bin/fslmaths stats/zstat3 -mas mask thresh_zstat3
+
+echo 45037 > thresh_zstat3.vol
+zstat3: DLH=0.387652 VOLUME=45037 RESELS=11.9493
+
+/usr/local/fsl/bin/fslmaths stats/zstat4 -mas mask thresh_zstat4
+
+echo 45037 > thresh_zstat4.vol
+zstat4: DLH=0.387652 VOLUME=45037 RESELS=11.9493
+
+/usr/local/fsl/bin/fslmaths stats/zstat5 -mas mask thresh_zstat5
+
+echo 45037 > thresh_zstat5.vol
+zstat5: DLH=0.387652 VOLUME=45037 RESELS=11.9493
+
+/usr/local/fsl/bin/fslmaths stats/zfstat1 -mas mask thresh_zfstat1
+
+echo 45037 > thresh_zfstat1.vol
+zfstat1: DLH=0.387652 VOLUME=45037 RESELS=11.9493
+
+/usr/local/fsl/bin/cluster -i thresh_zstat1 -c stats/cope1 -t 2.3 -p 0.05 -d 0.387652 --volume=45037 --othresh=thresh_zstat1 -o cluster_mask_zstat1 --connectivity=26  --olmax=lmax_zstat1.txt --scalarname=Z > cluster_zstat1.txt
+
+/usr/local/fsl/bin/cluster2html . cluster_zstat1 
+
+/usr/local/fsl/bin/cluster -i thresh_zstat2 -c stats/cope2 -t 2.3 -p 0.05 -d 0.387652 --volume=45037 --othresh=thresh_zstat2 -o cluster_mask_zstat2 --connectivity=26  --olmax=lmax_zstat2.txt --scalarname=Z > cluster_zstat2.txt
+
+/usr/local/fsl/bin/cluster2html . cluster_zstat2 
+
+/usr/local/fsl/bin/cluster -i thresh_zstat3 -c stats/cope3 -t 2.3 -p 0.05 -d 0.387652 --volume=45037 --othresh=thresh_zstat3 -o cluster_mask_zstat3 --connectivity=26  --olmax=lmax_zstat3.txt --scalarname=Z > cluster_zstat3.txt
+
+/usr/local/fsl/bin/cluster2html . cluster_zstat3 
+
+/usr/local/fsl/bin/cluster -i thresh_zstat4 -c stats/cope4 -t 2.3 -p 0.05 -d 0.387652 --volume=45037 --othresh=thresh_zstat4 -o cluster_mask_zstat4 --connectivity=26  --olmax=lmax_zstat4.txt --scalarname=Z > cluster_zstat4.txt
+
+/usr/local/fsl/bin/cluster2html . cluster_zstat4 
+
+/usr/local/fsl/bin/cluster -i thresh_zstat5 -c stats/cope5 -t 2.3 -p 0.05 -d 0.387652 --volume=45037 --othresh=thresh_zstat5 -o cluster_mask_zstat5 --connectivity=26  --olmax=lmax_zstat5.txt --scalarname=Z > cluster_zstat5.txt
+
+/usr/local/fsl/bin/cluster2html . cluster_zstat5 
+
+/usr/local/fsl/bin/cluster -i thresh_zfstat1  -t 2.3 -p 0.05 -d 0.387652 --volume=45037 --othresh=thresh_zfstat1 -o cluster_mask_zfstat1 --connectivity=26  --olmax=lmax_zfstat1.txt --scalarname=Z > cluster_zfstat1.txt
+
+/usr/local/fsl/bin/cluster2html . cluster_zfstat1 
+
+/usr/local/fsl/bin/fslstats thresh_zstat1 -l 0.0001 -R 2>/dev/null
+2.300137 6.125192 
+
+/usr/local/fsl/bin/fslstats thresh_zstat2 -l 0.0001 -R 2>/dev/null
+2.300575 6.442461 
+
+/usr/local/fsl/bin/fslstats thresh_zstat3 -l 0.0001 -R 2>/dev/null
+2.300339 6.432237 
+
+/usr/local/fsl/bin/fslstats thresh_zstat4 -l 0.0001 -R 2>/dev/null
+2.304082 3.940638 
+
+/usr/local/fsl/bin/fslstats thresh_zstat5 -l 0.0001 -R 2>/dev/null
+2.301106 6.232417 
+
+/usr/local/fsl/bin/fslstats thresh_zfstat1 -l 0.0001 -R 2>/dev/null
+2.301041 6.094474 
+Rendering using zmin=2.300137 zmax=6.442461
+
+/usr/local/fsl/bin/overlay 1 0 example_func -a thresh_zstat1 2.300137 6.442461 rendered_thresh_zstat1
+
+/usr/local/fsl/bin/slicer rendered_thresh_zstat1 -A 750 rendered_thresh_zstat1.png
+
+/bin/cp /usr/local/fsl/etc/luts/ramp.gif .ramp.gif
+
+/usr/local/fsl/bin/overlay 1 0 example_func -a thresh_zstat2 2.300137 6.442461 rendered_thresh_zstat2
+
+/usr/local/fsl/bin/slicer rendered_thresh_zstat2 -A 750 rendered_thresh_zstat2.png
+
+/usr/local/fsl/bin/overlay 1 0 example_func -a thresh_zstat3 2.300137 6.442461 rendered_thresh_zstat3
+
+/usr/local/fsl/bin/slicer rendered_thresh_zstat3 -A 750 rendered_thresh_zstat3.png
+
+/usr/local/fsl/bin/overlay 1 0 example_func -a thresh_zstat4 2.300137 6.442461 rendered_thresh_zstat4
+
+/usr/local/fsl/bin/slicer rendered_thresh_zstat4 -A 750 rendered_thresh_zstat4.png
+
+/usr/local/fsl/bin/overlay 1 0 example_func -a thresh_zstat5 2.300137 6.442461 rendered_thresh_zstat5
+
+/usr/local/fsl/bin/slicer rendered_thresh_zstat5 -A 750 rendered_thresh_zstat5.png
+
+/usr/local/fsl/bin/overlay 1 0 example_func -a thresh_zfstat1 2.300137 6.442461 rendered_thresh_zfstat1
+
+/usr/local/fsl/bin/slicer rendered_thresh_zfstat1 -A 750 rendered_thresh_zfstat1.png
+
+mkdir -p tsplot ; /usr/local/fsl/bin/tsplot . -f filtered_func_data -o tsplot
+zstat1: DLH=0.387652 VOLUME=45037 RESELS=11.9493
+zstat2: DLH=0.387652 VOLUME=45037 RESELS=11.9493
+zstat3: DLH=0.387652 VOLUME=45037 RESELS=11.9493
+zstat4: DLH=0.387652 VOLUME=45037 RESELS=11.9493
+zstat5: DLH=0.387652 VOLUME=45037 RESELS=11.9493
+zfstat1: DLH=0.387652 VOLUME=45037 RESELS=11.9493
+
+/usr/local/fsl/bin/cluster -i thresh_zstat1 -c stats/cope1 -t 2.3  -p 0.05 -d 0.387652 --volume=45037 -x reg/example_func2standard.mat --stdvol=reg/standard --mm --connectivity=26 --olmax=lmax_zstat1_std.txt --scalarname=Z > cluster_zstat1_std.txt
+
+/usr/local/fsl/bin/cluster2html . cluster_zstat1 -std
+
+/usr/local/fsl/bin/cluster -i thresh_zstat2 -c stats/cope2 -t 2.3  -p 0.05 -d 0.387652 --volume=45037 -x reg/example_func2standard.mat --stdvol=reg/standard --mm --connectivity=26 --olmax=lmax_zstat2_std.txt --scalarname=Z > cluster_zstat2_std.txt
+
+/usr/local/fsl/bin/cluster2html . cluster_zstat2 -std
+
+/usr/local/fsl/bin/cluster -i thresh_zstat3 -c stats/cope3 -t 2.3  -p 0.05 -d 0.387652 --volume=45037 -x reg/example_func2standard.mat --stdvol=reg/standard --mm --connectivity=26 --olmax=lmax_zstat3_std.txt --scalarname=Z > cluster_zstat3_std.txt
+
+/usr/local/fsl/bin/cluster2html . cluster_zstat3 -std
+
+/usr/local/fsl/bin/cluster -i thresh_zstat4 -c stats/cope4 -t 2.3  -p 0.05 -d 0.387652 --volume=45037 -x reg/example_func2standard.mat --stdvol=reg/standard --mm --connectivity=26 --olmax=lmax_zstat4_std.txt --scalarname=Z > cluster_zstat4_std.txt
+
+/usr/local/fsl/bin/cluster2html . cluster_zstat4 -std
+
+/usr/local/fsl/bin/cluster -i thresh_zstat5 -c stats/cope5 -t 2.3  -p 0.05 -d 0.387652 --volume=45037 -x reg/example_func2standard.mat --stdvol=reg/standard --mm --connectivity=26 --olmax=lmax_zstat5_std.txt --scalarname=Z > cluster_zstat5_std.txt
+
+/usr/local/fsl/bin/cluster2html . cluster_zstat5 -std
+
+/usr/local/fsl/bin/cluster -i thresh_zfstat1  -t 2.3  -p 0.05 -d 0.387652 --volume=45037 -x reg/example_func2standard.mat --stdvol=reg/standard --mm --connectivity=26 --olmax=lmax_zfstat1_std.txt --scalarname=Z > cluster_zfstat1_std.txt
+
+/usr/local/fsl/bin/cluster2html . cluster_zfstat1 -std

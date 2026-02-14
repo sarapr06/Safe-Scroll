@@ -15,7 +15,7 @@ FRONTEND_URL=http://localhost:5173
 GEMINI_API_KEY=your_gemini_key
 ELEVENLABS_API_KEY=your_elevenlabs_key
 PRESAGE_API_KEY=your_presage_key
-MONGODB_URI=mongodb+srv://sparvareshrizi_db_user:MVJpyZxRDUUwSZTk@makeuoft.wjvcxmh.mongodb.net/safescroll?retryWrites=true&w=majority
+MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/safescroll?retryWrites=true&w=majority
 ```
 
 **⚠️ Never commit `.env` to git.**

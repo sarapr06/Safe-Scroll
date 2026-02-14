@@ -1,0 +1,78 @@
+/usr/local/fsl/bin/contrast_mgr -f design.fts stats design.con 
+---------------------------------------------
+
+p = 0.05: Positive only, ratio =  2.5912
+p = 0.05: Negative only, ratio =  1.02538
+p = 0.05: ratio = 1.80829
+p = 0.0158114: Positive only, ratio =  4.45164
+p = 0.0158114: Negative only, ratio =  1.24421
+p = 0.0158114: ratio = 2.84792
+p = 0.005: Positive only, ratio =  8.09557
+p = 0.005: Negative only, ratio =  1.45658
+p = 0.005: ratio = 4.77607
+p = 0.00158114: Positive only, ratio =  15.9388
+p = 0.00158114: Negative only, ratio =  1.81155
+p = 0.00158114: ratio = 8.87519
+p = 0.0005: Positive only, ratio =  33.0839
+p = 0.0005: Negative only, ratio =  2.70888
+p = 0.0005: ratio = 17.8964
+p = 0.05: Positive only, ratio =  2.36783
+p = 0.05: Negative only, ratio =  1.10531
+p = 0.05: ratio = 1.73657
+p = 0.0158114: Positive only, ratio =  3.51076
+p = 0.0158114: Negative only, ratio =  1.2737
+p = 0.0158114: ratio = 2.39223
+p = 0.005: Positive only, ratio =  5.29787
+p = 0.005: Negative only, ratio =  1.47878
+p = 0.005: ratio = 3.38832
+p = 0.00158114: Positive only, ratio =  8.36964
+p = 0.00158114: Negative only, ratio =  2.07837
+p = 0.00158114: ratio = 5.224
+p = 0.0005: Positive only, ratio =  15.1431
+p = 0.0005: Negative only, ratio =  2.66448
+p = 0.0005: ratio = 8.90379
+p = 0.05: Positive only, ratio =  2.70355
+p = 0.05: Negative only, ratio =  0.995182
+p = 0.05: ratio = 1.84937
+p = 0.0158114: Positive only, ratio =  4.38704
+p = 0.0158114: Negative only, ratio =  1.16838
+p = 0.0158114: ratio = 2.77771
+p = 0.005: Positive only, ratio =  7.46941
+p = 0.005: Negative only, ratio =  1.29671
+p = 0.005: ratio = 4.38306
+p = 0.00158114: Positive only, ratio =  13.2426
+p = 0.00158114: Negative only, ratio =  1.65708
+p = 0.00158114: ratio = 7.44982
+p = 0.0005: Positive only, ratio =  24.1135
+p = 0.0005: Negative only, ratio =  1.95395
+p = 0.0005: ratio = 13.0337
+p = 0.05: Positive only, ratio =  1.34689
+p = 0.05: Negative only, ratio =  1.62799
+p = 0.05: ratio = 1.48744
+p = 0.0158114: Positive only, ratio =  1.62759
+p = 0.0158114: Negative only, ratio =  2.66115
+p = 0.0158114: ratio = 2.14437
+p = 0.005: Positive only, ratio =  1.94507
+p = 0.005: Negative only, ratio =  4.63175
+p = 0.005: ratio = 3.28841
+p = 0.00158114: Positive only, ratio =  2.06432
+p = 0.00158114: Negative only, ratio =  9.12796
+p = 0.00158114: ratio = 5.59614
+p = 0.0005: Positive only, ratio =  2.08717
+p = 0.0005: Negative only, ratio =  17.5411
+p = 0.0005: ratio = 9.81415
+p = 0.05: Positive only, ratio =  1.62799
+p = 0.05: Negative only, ratio =  1.34689
+p = 0.05: ratio = 1.48744
+p = 0.0158114: Positive only, ratio =  2.66115
+p = 0.0158114: Negative only, ratio =  1.62759
+p = 0.0158114: ratio = 2.14437
+p = 0.005: Positive only, ratio =  4.63175
+p = 0.005: Negative only, ratio =  1.94507
+p = 0.005: ratio = 3.28841
+p = 0.00158114: Positive only, ratio =  9.12796
+p = 0.00158114: Negative only, ratio =  2.06432
+p = 0.00158114: ratio = 5.59614
+p = 0.0005: Positive only, ratio =  17.5411
+p = 0.0005: Negative only, ratio =  2.08717
+p = 0.0005: ratio = 9.81415

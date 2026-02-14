@@ -11,6 +11,7 @@ import { createServer } from 'http';
 import { initWs, broadcastGesture } from './ws.js';
 import { gesturesRouter } from './routes/gestures.js';
 import { filesRouter } from './routes/files.js';
+import { imagingRouter } from './routes/imaging.js';
 import { summarizeRouter } from './routes/summarize.js';
 import { presageRouter } from './routes/presage.js';
 import { connectDb } from './db.js';
@@ -21,15 +22,35 @@ const server = createServer(app);
 initWs(server);
 
 app.use(cors({ origin: process.env.FRONTEND_URL || '*' }));
-app.use(express.json());
+app.use(express.json({ limit: '2mb' }));
 
 app.use('/api/gestures', gesturesRouter);
 app.use('/api/files', filesRouter);
+app.use('/api/imaging', imagingRouter);
 app.use('/api/summarize', summarizeRouter);
 app.use('/api/presage', presageRouter);
 
+app.use((err, req, res, next) => {
+  console.error('[Express error]', err?.message || err);
+  if (!res.headersSent) res.status(500).json({ error: err?.message || 'Internal server error' });
+});
+
 app.get('/health', (req, res) => {
   res.json({ ok: true, geminiModel: GEMINI_MODEL });
+});
+
+app.get('/api/nifti-sample', async (req, res) => {
+  const sampleUrl = 'https://nifti.nimh.nih.gov/nifti-1/data/avg152T1_LR_nifti.nii.gz';
+  try {
+    const r = await fetch(sampleUrl);
+    if (!r.ok) throw new Error(`Upstream ${r.status}`);
+    const buf = Buffer.from(await r.arrayBuffer());
+    res.setHeader('Content-Type', 'application/gzip');
+    res.setHeader('Content-Disposition', 'inline; filename=avg152T1_LR_nifti.nii.gz');
+    res.send(buf);
+  } catch (e) {
+    res.status(500).json({ error: e?.message || 'Failed to fetch sample NIfTI' });
+  }
 });
 
 app.get('/api/gemini-test', async (req, res) => {

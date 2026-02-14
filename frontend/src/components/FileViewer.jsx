@@ -1,6 +1,8 @@
+import { ImagingPanel } from './ImagingPanel.jsx';
+
 const SCROLL_AMOUNT = 80;
 
-export function FileViewer({ file, scrollContainerRef }) {
+export function FileViewer({ file, scrollContainerRef, imaging = null, imagingLoading = false, demoImaging = null }) {
   if (!file) {
     return (
       <div className="file-viewer empty">
@@ -11,11 +13,18 @@ export function FileViewer({ file, scrollContainerRef }) {
     );
   }
   const text = file.content || file.text || JSON.stringify(file, null, 2);
+  const patientId = file.patientId;
   return (
     <div className="file-viewer">
       <h2>{file.title || file.patientId || 'Patient Record'}</h2>
       <div ref={scrollContainerRef} className="file-scroll-container">
         <pre className="file-content">{text}</pre>
+        <ImagingPanel
+          patientId={patientId}
+          imaging={imaging}
+          loading={imagingLoading}
+          demoImaging={demoImaging}
+        />
       </div>
     </div>
   );

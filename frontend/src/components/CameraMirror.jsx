@@ -151,11 +151,19 @@ export function CameraMirror({ onWaveLeft, onWaveRight, onScrollUp, onScrollDown
   }, [onWaveLeft, onWaveRight, onScrollUp, onScrollDown, onSwitchScrollTarget, onPlayAudio, onUserGesture, clearScrollInterval]);
 
   useEffect(() => {
+    let failCount = 0;
+    const maxFails = 3;
     const poll = () => {
+      if (failCount >= maxFails) return;
       fetch(`${API}/presage/metrics`)
-        .then((r) => r.json())
-        .then(setPresageMetrics)
-        .catch(() => {});
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(r.status))))
+        .then((data) => {
+          failCount = 0;
+          setPresageMetrics(data);
+        })
+        .catch(() => {
+          failCount += 1;
+        });
     };
     poll();
     const id = setInterval(poll, 2000);

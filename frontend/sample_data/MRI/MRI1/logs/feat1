@@ -1,0 +1,27 @@
+
+/bin/cp /tmp/feat_a8DTCs.fsf design.fsf
+
+/usr/local/fsl/bin/feat_model design 
+
+mkdir .files;cp /usr/local/fsl/doc/fsl.css .files;ln -s /usr/local/fsl/doc/images .files/images
+
+/usr/local/fsl/bin/fsl_sub -T 10 -l logs -N feat0_init   /usr/local/fsl/bin/feat /home/fsl/fsl_course_data/fmri/fluency2/fmri.feat/design.fsf -D /home/fsl/fsl_course_data/fmri/fluency2/fmri.feat -I 1 -init
+3627
+
+/usr/local/fsl/bin/fsl_sub -T 30 -l logs -N feat1b_reg -j 3627  /usr/local/fsl/bin/feat /home/fsl/fsl_course_data/fmri/fluency2/fmri.feat/design.fsf -D /home/fsl/fsl_course_data/fmri/fluency2/fmri.feat -I 1 -reg
+3761
+
+/usr/local/fsl/bin/fsl_sub -T 10 -l logs -N feat2_pre -j 3761,3627  /usr/local/fsl/bin/feat /home/fsl/fsl_course_data/fmri/fluency2/fmri.feat/design.fsf -D /home/fsl/fsl_course_data/fmri/fluency2/fmri.feat -I 1 -prestats
+4521
+
+/usr/local/fsl/bin/fsl_sub -T 3 -l logs -N feat3_film -j 4521  /usr/local/fsl/bin/feat /home/fsl/fsl_course_data/fmri/fluency2/fmri.feat/design.fsf -D /home/fsl/fsl_course_data/fmri/fluency2/fmri.feat -I 1 -film
+4852
+
+/usr/local/fsl/bin/fsl_sub -T 5 -l logs -N feat4_post -j 4852  /usr/local/fsl/bin/feat /home/fsl/fsl_course_data/fmri/fluency2/fmri.feat/design.fsf -D /home/fsl/fsl_course_data/fmri/fluency2/fmri.feat -poststats 0 0
+5048
+
+/usr/local/fsl/bin/fsl_sub -T 119 -l logs -N feat4_post -j 5048,3761  /usr/local/fsl/bin/feat /home/fsl/fsl_course_data/fmri/fluency2/fmri.feat/design.fsf -D /home/fsl/fsl_course_data/fmri/fluency2/fmri.feat -poststats 1 0
+6333
+
+/usr/local/fsl/bin/fsl_sub -T 1 -l logs -N feat5_stop -j 4521,4852,6333,3761  /usr/local/fsl/bin/feat /home/fsl/fsl_course_data/fmri/fluency2/fmri.feat/design.fsf -D /home/fsl/fsl_course_data/fmri/fluency2/fmri.feat -stop
+6949

@@ -9,6 +9,7 @@ import { CameraMirror } from './components/CameraMirror';
 import './App.css';
 import './components.css';
 import { DEMO_PATIENTS } from './demoPatients.js';
+import { DEMO_IMAGING } from './demoImaging.js';
 
 const API = '/api';
 
@@ -16,9 +17,13 @@ export default function App() {
   const [files, setFiles] = useState([]);
   const [filesLoading, setFilesLoading] = useState(true);
   const [currentFile, setCurrentFile] = useState(null);
+  const [imaging, setImaging] = useState(null);
+  const [imagingLoading, setImagingLoading] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [summariesByFileId, setSummariesByFileId] = useState({});
+  const [audioCache, setAudioCache] = useState({});
   const [lastGesture, setLastGesture] = useState(null);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
 
@@ -27,7 +32,6 @@ export default function App() {
     const i = currentIndex <= 0 ? files.length - 1 : currentIndex - 1;
     setCurrentIndex(i);
     setCurrentFile(files[i]);
-    setSummary(null);
   }, [files, currentIndex]);
 
   const goNext = useCallback(() => {
@@ -35,7 +39,6 @@ export default function App() {
     const i = currentIndex < 0 || currentIndex >= files.length - 1 ? 0 : currentIndex + 1;
     setCurrentIndex(i);
     setCurrentFile(files[i]);
-    setSummary(null);
   }, [files, currentIndex]);
 
   const contentScrollRef = useRef(null);
@@ -69,6 +72,22 @@ export default function App() {
     }
   }, [files, currentFile]);
 
+  // Announce patient name when loading a patient
+  const getPatientName = useCallback((file) =>
+    file ? (file.title?.replace(/^(Peri-Operative Record|Patient Report Sheet) - /, '') || file.patientId) : null
+  , []);
+  useEffect(() => {
+    const name = getPatientName(currentFile);
+    if (!name || typeof speechSynthesis === 'undefined' || !speechSynthesis.speak) return;
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(name);
+    u.rate = 0.95;
+    u.lang = 'en-US';
+    const voices = speechSynthesis.getVoices();
+    if (voices?.length > 0) u.voice = voices[0];
+    speechSynthesis.speak(u);
+  }, [currentFile, getPatientName]);
+
   const initialLoadDone = useRef(false);
   const loadFiles = useCallback(() => {
     setFilesLoading(true);
@@ -76,6 +95,9 @@ export default function App() {
       .then((r) => r.json())
       .then((data) => {
         const list = data?.length > 0 ? data : DEMO_PATIENTS;
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:loadFilesResolved',message:'files loaded',data:{count:list?.length,ids:list?.map(f=>String(f._id??f.id??''))},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
+        // #endregion
         setFiles(list);
         if (list.length > 0 && !initialLoadDone.current) {
           initialLoadDone.current = true;
@@ -84,6 +106,9 @@ export default function App() {
         }
       })
       .catch(() => {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:loadFilesCatch',message:'files fetch failed, using demo',data:{ids:DEMO_PATIENTS?.map(f=>String(f._id??f.id??''))},timestamp:Date.now(),hypothesisId:'H1_H2'})}).catch(()=>{});
+        // #endregion
         setFiles(DEMO_PATIENTS);
         if (!initialLoadDone.current) {
           initialLoadDone.current = true;
@@ -98,17 +123,152 @@ export default function App() {
     loadFiles();
   }, []);
 
+  // One Gemini call per page load: batch summarize all patients, then show cached summaries
+  const batchRequestedRef = useRef(false);
+  useEffect(() => {
+    if (files.length === 0 || filesLoading || batchRequestedRef.current) return;
+    batchRequestedRef.current = true;
+    setLoading(true);
+    const payload = {
+      files: files.map((f) => ({
+        id: f._id ?? f.id,
+        content: f.content || f.text || '',
+      })),
+    };
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:batchStart',message:'batch request sent',data:{fileCount:payload.files?.length,ids:payload.files?.map(f=>String(f.id))},timestamp:Date.now(),hypothesisId:'H1_H2'})}).catch(()=>{});
+    // #endregion
+    fetch(`${API}/summarize/batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+      .then(async (r) => {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:batchResponse',message:'batch raw response',data:{ok:r.ok,status:r.status},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+        // #endregion
+        const text = await r.text();
+        let data;
+        try { data = text ? JSON.parse(text) : {}; } catch { data = { error: r.ok ? 'Invalid response' : `Request failed (${r.status})` }; }
+        return data;
+      })
+      .then((data) => {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:batchData',message:'batch data received',data:{hasSummaries:!!data.summaries,summaryKeys:data.summaries?Object.keys(data.summaries):[],error:data.error,firstSummarySample:data.summaries?JSON.stringify(Object.values(data.summaries)[0])?.slice(0,150):null},timestamp:Date.now(),hypothesisId:'H2_H3'})}).catch(()=>{});
+        // #endregion
+        if (data.summaries && typeof data.summaries === 'object') {
+          setSummariesByFileId(data.summaries);
+        } else if (data.error && payload.files?.length) {
+          const errSummaries = {};
+          payload.files.forEach((f) => {
+            errSummaries[String(f.id)] = { error: data.error, keyFindings: [], abnormalVitals: [], coreMetrics: {}, verbalSummary: data.error };
+          });
+          setSummariesByFileId(errSummaries);
+        }
+      })
+      .catch((e) => {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:batchCatch',message:'batch fetch failed',data:{err:String(e?.message||e)},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+        // #endregion
+        batchRequestedRef.current = false;
+      })
+      .finally(() => setLoading(false));
+  }, [files, filesLoading]);
+
+  // Fallback: per-patient summarize when batch fails or returns no summaries (AI only)
+  const handleSummarizeOne = useCallback(async () => {
+    if (!currentFile || loading) return;
+    const fileId = currentFile._id;
+    const content = currentFile.content || currentFile.text;
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleSummarizeOne',message:'fallback invoked',data:{fileId:String(fileId),hasContent:!!content?.length},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
+    // #endregion
+    setLoading(true);
+    try {
+      const res = await fetch(`${API}/summarize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileId, content }),
+      });
+      const text = await res.text();
+      let data;
+      try { data = text ? JSON.parse(text) : {}; } catch { data = { error: res.ok ? 'Invalid response' : `Request failed (${res.status})` }; }
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleSummarizeOneResult',message:'fallback result',data:{fileId:String(fileId),hasSummary:!!data.summary,hasAudio:!!data.audioBase64,ok:!(data.error),error:data.error},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
+      // #endregion
+      if (data.summary != null || data.audioBase64 != null) {
+        setSummariesByFileId((prev) => ({ ...prev, [String(fileId)]: data }));
+        setSummary(data);
+      } else if (data.error) {
+        const errData = { error: data.error, keyFindings: [], abnormalVitals: [], coreMetrics: {}, verbalSummary: data.error };
+        setSummariesByFileId((prev) => ({ ...prev, [String(fileId)]: errData }));
+        setSummary(errData);
+      }
+    } catch (e) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleSummarizeOneCatch',message:'fallback failed',data:{err:String(e?.message||e)},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
+      // #endregion
+    } finally {
+      setLoading(false);
+    }
+  }, [currentFile, loading]);
+
+  // Derive summary from cache when current file changes (AI only)
+  const fallbackRequestedRef = useRef(new Set());
+  useEffect(() => {
+    if (!currentFile) {
+      setSummary(null);
+      return;
+    }
+    const id = String(currentFile._id ?? currentFile.id ?? '');
+    let cached = summariesByFileId[id];
+    if (!cached && Object.keys(summariesByFileId).length > 0) {
+      const altId = String(currentFile.id ?? currentFile._id ?? '');
+      if (altId && altId !== id) cached = summariesByFileId[altId];
+    }
+    const hasContent = !!(currentFile.content || currentFile.text);
+    const willAttemptFallback = !cached && !loading && hasContent && !fallbackRequestedRef.current.has(id) && typeof handleSummarizeOne === 'function';
+
+    setSummary(cached ?? null);
+    if (willAttemptFallback) {
+      fallbackRequestedRef.current.add(id);
+      handleSummarizeOne();
+    }
+  }, [currentFile, summariesByFileId, loading, handleSummarizeOne]);
+
+  // Fetch imaging when patient file changes
+  useEffect(() => {
+    const pid = currentFile?.patientId;
+    if (!pid) {
+      setImaging(null);
+      return;
+    }
+    setImagingLoading(true);
+    setImaging(null);
+    fetch(`${API}/imaging?patientId=${encodeURIComponent(pid)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) setImaging(data);
+        else setImaging([]);
+      })
+      .catch(() => setImaging(null))
+      .finally(() => setImagingLoading(false));
+  }, [currentFile?.patientId]);
+
   const gestureClearTimerRef = useRef(null);
   useEffect(() => {
     let ws = null;
     let retryTimer;
     let connectTimer;
     let cancelled = false;
+    let failCount = 0;
+    const maxRetries = 5;
     const connect = () => {
-      if (cancelled) return;
+      if (cancelled || failCount >= maxRetries) return;
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const host = import.meta.env.DEV ? `${location.hostname}:4000` : location.host;
+      const host = location.host;
       ws = new WebSocket(`${proto}//${host}/ws/gestures`);
+      ws.onopen = () => { failCount = 0; };
       ws.onmessage = (e) => {
         try {
           const gesture = JSON.parse(e.data);
@@ -122,7 +282,10 @@ export default function App() {
       };
       ws.onclose = () => {
         ws = null;
-        if (!cancelled) retryTimer = setTimeout(connect, 3000);
+        if (!cancelled) {
+          failCount += 1;
+          if (failCount < maxRetries) retryTimer = setTimeout(connect, 3000);
+        }
       };
       ws.onerror = () => {};
     };
@@ -139,45 +302,12 @@ export default function App() {
   const handleSelectFile = (file) => {
     setCurrentFile(file);
     setCurrentIndex(files.findIndex((f) => f._id === file._id));
-    setSummary(null);
   };
-
-  const currentFileRef = useRef(currentFile);
-  currentFileRef.current = currentFile;
-
-  const handleSummarize = useCallback(async () => {
-    if (!currentFile) return;
-    const fileId = currentFile._id;
-    const content = currentFile.content || currentFile.text;
-    setLoading(true);
-    try {
-      const res = await fetch(`${API}/summarize`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileId, content }),
-      });
-      const data = await res.json();
-      if (currentFileRef.current?._id === fileId) setSummary(data);
-    } catch (e) {
-      if (currentFileRef.current?._id === fileId) setSummary({ error: e.message });
-    } finally {
-      setLoading(false);
-    }
-  }, [currentFile]);
-
-  // Auto-summarize when patient file is viewed
-  const lastSummarizedId = useRef(null);
-  useEffect(() => {
-    if (!currentFile || filesLoading || loading) return;
-    if (lastSummarizedId.current === currentFile._id) return;
-    lastSummarizedId.current = currentFile._id;
-    const t = setTimeout(handleSummarize, 300);
-    return () => clearTimeout(t);
-  }, [currentFile?._id, filesLoading, loading, handleSummarize]);
 
   const audioRef = useRef(null);
   const blobUrlRef = useRef(null);
-  const handlePlayAudio = useCallback(() => {
+
+  const handlePlayAudio = useCallback(async () => {
     const s = summary?.summary || summary;
     const toRead =
       s?.verbalSummary ||
@@ -189,11 +319,26 @@ export default function App() {
       null;
     const msg =
       loading ? 'Summary is loading. Please wait.'
-        : !summary ? 'No summary available. Select a file and wait for it to load.'
+        : !summary ? 'AI summary loading…'
         : 'Wait for the summary to load, then close your fist.';
-    const text = toRead || msg;
-    const audioBase64 = summary?.audioBase64;
-    if (audioBase64 && s) {
+    const text = (toRead || msg).replace(/AI unavailable/gi, 'loading');
+    const fileId = currentFile?._id;
+    let audioBase64 = summary?.audioBase64 ?? (fileId ? audioCache[fileId] : null);
+    if (!audioBase64 && text && fileId) {
+      try {
+        const res = await fetch(`${API}/summarize/audio`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text }),
+        });
+        const data = await res.json();
+        if (data.audioBase64) {
+          setAudioCache((prev) => ({ ...prev, [fileId]: data.audioBase64 }));
+          audioBase64 = data.audioBase64;
+        }
+      } catch {}
+    }
+    if (audioBase64 && text) {
       try {
         if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
         const binary = atob(audioBase64);
@@ -250,7 +395,7 @@ export default function App() {
       u.onend = () => setIsPlayingAudio(false);
       speechSynthesis.speak(u);
     }
-  }, [summary, loading]);
+  }, [summary, loading, currentFile?._id, audioCache]);
 
   const handleUserGesture = useCallback(() => {
     if (typeof speechSynthesis === 'undefined') return;
@@ -303,7 +448,13 @@ export default function App() {
         </aside>
 
         <section className={`content ${scrollTarget === 'patient' ? 'content--scroll-target' : ''}`}>
-          <FileViewer file={currentFile} scrollContainerRef={contentScrollRef} />
+          <FileViewer
+            file={currentFile}
+            scrollContainerRef={contentScrollRef}
+            imaging={imaging}
+            imagingLoading={imagingLoading}
+            demoImaging={currentFile?.patientId ? DEMO_IMAGING[currentFile.patientId] : null}
+          />
         </section>
 
         <aside className={`summary-sidebar ${scrollTarget === 'summary' ? 'summary-sidebar--scroll-target' : ''}`}>

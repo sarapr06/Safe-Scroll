@@ -86,11 +86,11 @@ Recent labs/imaging: CBC, BMP, EKG within normal limits`,
   {
     _id: 'demo-3',
     patientId: 'MR923104',
-    title: 'Peri-Operative Record - Evan Bentz',
+    title: 'Peri-Operative Record - Chris Yip',
     type: 'peri_operative',
     content: `PERI-OPERATIVE RECORD - Page 1 of 3
 
-Patient: Evan Bentz  |  MR#: MR923104
+Patient: Chris Yip  |  MR#: MR923104
 Date: 2024-02-14  |  Suite #: 7
 
 TIMING:

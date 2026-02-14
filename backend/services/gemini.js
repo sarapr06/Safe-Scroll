@@ -47,8 +47,6 @@ export async function summarizePatientFile(content) {
 3. Core metrics (HR, BP, temp, etc.) in a brief table format
 4. A 2-3 sentence clinical summary for verbal readout
 
-Use **double asterisks** around clinically important terms: abnormal values, critical findings, key numbers, diagnoses, allergies, medications to watch. Example: "**BP 180/95** (elevated)" or "**NSTEMI** ruled out". Keep the double asterisks inside the JSON strings.
-
 Output ONLY valid JSON, no markdown or code blocks. Schema:
 {
   "keyFindings": ["string"],
@@ -143,5 +141,83 @@ ${content}
       coreMetrics: {},
       error: userMsg,
     };
+  }
+}
+
+/**
+ * Summarize all patient files in a single Gemini API call.
+ * @param {Array<{id: string, content: string}>} files - Files with id and content
+ * @returns {Promise<Record<string, object>>} Map of file id -> summary
+ */
+export async function summarizePatientFilesBatch(files) {
+  if (!files?.length) return {};
+
+  const schemaDesc = `{
+  "keyFindings": ["string"],
+  "abnormalVitals": ["string"],
+  "coreMetrics": { "heartRate": "string", "bloodPressure": "string" },
+  "verbalSummary": "string"
+}`;
+
+  const blocks = files.map(
+    (f, i) =>
+      `--- PATIENT ${i + 1} (id: ${String(f.id)}) ---\n${(f.content || '').slice(0, 8000)}`
+  ).join('\n\n');
+
+  const prompt = `You are a medical assistant. Analyze these ${files.length} patient files. For EACH patient, extract:
+1. Key findings (2-4 bullet points)
+2. Abnormal vitals or lab values (highlight if any)
+3. Core metrics (HR, BP, temp, etc.) in a brief table format
+4. A 2-3 sentence clinical summary for verbal readout
+
+Use **double asterisks** around clinically important terms. Keep the double asterisks inside the JSON strings.
+
+Output ONLY a valid JSON array with exactly ${files.length} elements, in the SAME ORDER as the input. Each element schema:
+${schemaDesc}
+
+Example: [{"keyFindings":[],"abnormalVitals":[],"coreMetrics":{},"verbalSummary":"..."}, ...]
+
+Patient files:
+${blocks}`;
+
+  function parseBatchResponse(text) {
+    let str = String(text || '').trim();
+    const codeBlockMatch = str.match(/[`\uFF40]{3,}\s*json\s*([\s\S]*?)\s*[`\uFF40]{3,}/i);
+    if (codeBlockMatch) str = codeBlockMatch[1].trim();
+    str = str.replace(/^[\s]*[`\uFF40]{3,}\s*json?\s*/gi, '').replace(/\s*[`\uFF40]{3,}\s*$/g, '').trim();
+    str = str.replace(/^[`\uFF40\s]+/, '').trim();
+    const start = str.indexOf('[');
+    const end = str.lastIndexOf(']');
+    if (start < 0 || end <= start) throw new Error('No JSON array found');
+    return JSON.parse(str.slice(start, end + 1));
+  }
+
+  try {
+    const rawText = await callGeminiREST(GEMINI_MODEL, prompt);
+    const arr = parseBatchResponse(rawText);
+    const result = {};
+    files.forEach((f, i) => {
+      const item = Array.isArray(arr) && arr[i] ? arr[i] : null;
+      const id = String(f.id);
+      result[id] = item && typeof item === 'object'
+        ? { summary: item, ...item }
+        : { error: 'No summary returned', keyFindings: [], abnormalVitals: [], coreMetrics: {}, verbalSummary: '' };
+    });
+    return result;
+  } catch (e) {
+    console.error('[Gemini] Batch error:', e.message);
+    const errMsg = e.message?.slice(0, 150) || 'Batch summarize failed';
+    const fallback = {};
+    files.forEach((f) => {
+      const id = String(f.id);
+      fallback[id] = {
+        error: errMsg,
+        keyFindings: [],
+        abnormalVitals: [],
+        coreMetrics: {},
+        verbalSummary: errMsg,
+      };
+    });
+    return fallback;
   }
 }
