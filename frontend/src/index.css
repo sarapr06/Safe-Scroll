@@ -1,0 +1,22 @@
+:root {
+  --valentine-rose: #e11d48;
+  --valentine-blush: #fce7f3;
+  --valentine-cream: #fff1f2;
+  --valentine-pink: #f472b6;
+  --valentine-deep: #be123c;
+  --valentine-gold: #d4a574;
+  --valentine-ink: #4c0519;
+  --valentine-muted: #9f1239;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  background: linear-gradient(135deg, var(--valentine-cream) 0%, var(--valentine-blush) 50%, #fdf2f8 100%);
+  min-height: 100vh;
+  color: var(--valentine-ink);
+}

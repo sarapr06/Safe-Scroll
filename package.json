@@ -1,0 +1,11 @@
+{
+  "name": "safe-scroll",
+  "private": true,
+  "scripts": {
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "seed": "cd backend && node scripts/seed-db.js",
+    "seed:preop": "cd backend && node scripts/seed-preop-patients.js",
+    "bridge": "cd scripts && node serial-bridge.js"
+  }
+}

@@ -1,0 +1,428 @@
+.file-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.file-list-title {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 1.2rem;
+  color: var(--valentine-deep);
+  margin: 0;
+}
+
+.btn-refresh {
+  background: none;
+  border: 1px solid rgba(244, 114, 182, 0.4);
+  color: var(--valentine-rose);
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-refresh:hover:not(:disabled) {
+  background: var(--valentine-blush);
+}
+
+.btn-refresh:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.file-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hint {
+  font-size: 0.75rem;
+  opacity: 0.8;
+}
+
+.file-list ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.file-list li {
+  margin-bottom: 0.25rem;
+}
+
+.file-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border: none;
+  background: transparent;
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.9rem;
+  color: var(--valentine-ink);
+  transition: background 0.15s;
+}
+
+.file-item:hover {
+  background: var(--valentine-blush);
+}
+
+.file-item.active {
+  background: var(--valentine-blush);
+  color: var(--valentine-rose);
+  font-weight: 500;
+}
+
+.file-icon {
+  color: var(--valentine-rose);
+  font-size: 0.9rem;
+}
+
+.file-list .empty {
+  padding: 1rem;
+  color: var(--valentine-muted);
+  font-size: 0.9rem;
+}
+
+.file-viewer {
+  font-size: 0.95rem;
+  line-height: 1.6;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.file-scroll-container {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 200px;
+  max-height: 75vh; /* constrain so content overflows and becomes scrollable */
+}
+
+.file-viewer.empty {
+  text-align: center;
+  color: var(--valentine-muted);
+  padding: 3rem 2rem;
+}
+
+.file-viewer.empty p {
+  margin: 0.5rem 0;
+}
+
+.file-viewer h2 {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 1.4rem;
+  color: var(--valentine-deep);
+  margin: 0 0 1rem 0;
+}
+
+.file-content {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  font-family: 'DM Sans', monospace;
+}
+
+.summary-audio-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--valentine-muted);
+  padding: 0.35rem 0.6rem;
+  background: rgba(244, 114, 182, 0.08);
+  border-radius: 8px;
+  margin-bottom: 0.75rem;
+  transition: background 0.2s, color 0.2s;
+}
+
+.summary-play-btn {
+  flex-shrink: 0;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
+  border: 1px solid rgba(244, 114, 182, 0.5);
+  background: rgba(244, 114, 182, 0.1);
+  color: var(--valentine-rose);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.summary-play-btn:hover {
+  background: rgba(244, 114, 182, 0.2);
+}
+
+.summary-audio-status--unlock {
+  cursor: pointer;
+  border: 1px dashed rgba(244, 114, 182, 0.5);
+}
+
+.summary-audio-status--unlock:hover {
+  background: rgba(244, 114, 182, 0.15);
+}
+
+.summary-audio-status--active {
+  background: rgba(225, 29, 72, 0.15);
+  color: var(--valentine-rose);
+  font-weight: 600;
+  animation: summary-audio-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes summary-audio-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.85; }
+}
+
+.summary-panel h3 {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 1.2rem;
+  color: var(--valentine-deep);
+  margin: 0 0 0.25rem 0;
+}
+
+.summary-patient {
+  font-size: 0.9rem;
+  color: var(--valentine-rose);
+  font-weight: 600;
+  margin: 0 0 0.75rem 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(244, 114, 182, 0.3);
+}
+
+.summary-loading {
+  color: var(--valentine-muted);
+  font-style: italic;
+}
+
+.summary-empty {
+  color: var(--valentine-muted);
+  font-size: 0.9rem;
+}
+
+.summary-error {
+  color: var(--valentine-rose);
+  font-size: 0.9rem;
+}
+
+.summary-error-hint {
+  color: var(--valentine-muted);
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+}
+
+.summary-audio-error {
+  color: var(--valentine-rose);
+  font-size: 0.85rem;
+  margin: 0 0 0.5rem 0;
+  padding: 0.4rem;
+  background: rgba(244, 114, 182, 0.12);
+  border-radius: 8px;
+}
+
+.key-findings {
+  padding-left: 1.25rem;
+  margin: 0 0 1rem 0;
+}
+
+.key-findings li {
+  margin-bottom: 0.4rem;
+}
+
+.abnormal ul {
+  padding-left: 1.25rem;
+  margin: 0.25rem 0 1rem 0;
+}
+
+.core-metrics dl {
+  margin: 0.25rem 0 1rem 0;
+}
+
+.core-metrics dt {
+  font-size: 0.8rem;
+  color: var(--valentine-muted);
+  text-transform: capitalize;
+}
+
+.core-metrics dd {
+  margin: 0 0 0.25rem 1rem;
+}
+
+.verbal-summary p {
+  font-size: 0.95rem;
+  line-height: 1.5;
+  margin-bottom: 0.75rem;
+}
+
+.btn-audio {
+  background: var(--valentine-pink);
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-audio:hover {
+  background: var(--valentine-rose);
+}
+
+.gesture-status {
+  position: fixed;
+  bottom: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  animation: fadeIn 0.2s;
+}
+
+.gesture-badge {
+  background: var(--valentine-deep);
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(10px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* Camera mirror */
+.camera-mirror {
+  background: rgba(0,0,0,0.03);
+  border-radius: 12px;
+  padding: 1rem;
+  border: 1px solid rgba(244, 114, 182, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.camera-instructions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--valentine-muted);
+}
+
+.camera-instructions-note {
+  font-size: 0.7rem;
+  opacity: 0.85;
+  margin: 0 0 0.2rem 0;
+}
+
+.camera-instructions-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.camera-instructions-row span:first-child {
+  font-weight: 600;
+  color: var(--valentine-deep);
+  min-width: 1.8em;
+}
+
+.camera-instructions-label {
+  color: var(--valentine-muted);
+}
+
+.btn-camera-toggle {
+  background: var(--valentine-rose);
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.btn-camera-toggle:hover {
+  background: var(--valentine-deep);
+}
+
+.camera-video-wrap {
+  position: relative;
+  width: 100%;
+  max-width: 320px;
+  aspect-ratio: 4/3;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #000;
+}
+
+.camera-video, .camera-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.camera-canvas {
+  pointer-events: none;
+}
+
+.camera-error {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 0.5rem;
+  background: rgba(225, 29, 72, 0.9);
+  color: white;
+  font-size: 0.75rem;
+}
+
+.camera-hand-status {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 0.4rem;
+  background: rgba(0, 0, 0, 0.6);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.7rem;
+  text-align: center;
+}
+
+.camera-hand-status--active {
+  background: rgba(34, 197, 94, 0.85);
+  color: white;
+  font-weight: 600;
+}
+
+.presage-metrics {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  font-size: 0.75rem;
+  color: var(--valentine-muted);
+}
+
+.presage-metric {
+  background: rgba(244, 114, 182, 0.12);
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  font-weight: 500;
+}
