@@ -9,7 +9,7 @@ import { ReadlineParser } from '@serialport/parser-readline';
 
 const PORT_PATH = process.env.ESP8266_SERIAL_PORT || '/dev/cu.usbserial-0001';
 const BAUD = parseInt(process.env.ESP8266_BAUD || '115200', 10);
-const FINGER_TIMEOUT_MS = parseInt(process.env.ESP8266_FINGER_TIMEOUT_MS || '800', 10);
+const FINGER_TIMEOUT_MS = parseInt(process.env.ESP8266_FINGER_TIMEOUT_MS || '5000', 10);
 
 let port = null;
 let broadcastFn = null;

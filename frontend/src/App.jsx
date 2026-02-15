@@ -323,7 +323,7 @@ export default function App() {
     let cancelled = false;
     let failCount = 0;
     const maxRetries = 5;
-    const FINGER_TIMEOUT_MS = 800;
+    const FINGER_TIMEOUT_MS = 5000;
     const connect = () => {
       if (cancelled || failCount >= maxRetries) return;
       const url = `${API}/esp8266/stream`;
