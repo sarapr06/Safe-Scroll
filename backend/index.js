@@ -8,12 +8,13 @@ dotenv.config({ path: join(__dirname, '.env') });
 import cors from 'cors';
 import { createServer } from 'http';
 
-import { initWs, broadcastGesture } from './ws.js';
+import { initWs, broadcastGesture, getEsp8266SSEClients } from './ws.js';
 import { gesturesRouter } from './routes/gestures.js';
 import { filesRouter } from './routes/files.js';
 import { imagingRouter } from './routes/imaging.js';
 import { summarizeRouter } from './routes/summarize.js';
 import { presageRouter } from './routes/presage.js';
+import { fmriniiRouter } from './routes/fmrinii.js';
 import { connectDb } from './db.js';
 import { GEMINI_MODEL } from './services/gemini.js';
 
@@ -29,6 +30,18 @@ app.use('/api/files', filesRouter);
 app.use('/api/imaging', imagingRouter);
 app.use('/api/summarize', summarizeRouter);
 app.use('/api/presage', presageRouter);
+app.use('/api/fmrinii', fmriniiRouter);
+
+app.get('/api/esp8266/stream', (req, res) => {
+  const clients = getEsp8266SSEClients();
+  clients.add(res);
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders?.();
+  req.on('close', () => clients.delete(res));
+});
 
 app.use((err, req, res, next) => {
   console.error('[Express error]', err?.message || err);

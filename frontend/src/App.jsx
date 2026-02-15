@@ -6,6 +6,7 @@ import { FileList } from './components/FileList';
 import { SummaryPanel } from './components/SummaryPanel';
 import { GestureStatus } from './components/GestureStatus';
 import { CameraMirror } from './components/CameraMirror';
+import { MRISlicePopup } from './components/MRISlicePopup';
 import './App.css';
 import './components.css';
 import { DEMO_PATIENTS } from './demoPatients.js';
@@ -26,6 +27,8 @@ export default function App() {
   const [audioCache, setAudioCache] = useState({});
   const [lastGesture, setLastGesture] = useState(null);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [isFingerPresent, setIsFingerPresent] = useState(false);
+  const [mriSliceIndex, setMriSliceIndex] = useState(0);
 
   const goPrev = useCallback(() => {
     if (files.length === 0) return;
@@ -154,7 +157,9 @@ export default function App() {
       })
       .then((data) => {
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:batchData',message:'batch data received',data:{hasSummaries:!!data.summaries,summaryKeys:data.summaries?Object.keys(data.summaries):[],error:data.error,firstSummarySample:data.summaries?JSON.stringify(Object.values(data.summaries)[0])?.slice(0,150):null},timestamp:Date.now(),hypothesisId:'H2_H3'})}).catch(()=>{});
+        const keys = data.summaries ? Object.keys(data.summaries) : [];
+        const perKey = keys.reduce((a, k) => { const sk=data.summaries[k]; const s=sk?.summary||sk; const vb=s?.verbalSummary??sk?.verbalSummary??''; a[k]={hasError:!!sk?.error,hasVerbal:!!vb,vbLen:vb?.length??0,vbSnippet:String(vb).slice(0,80)}; return a; }, {});
+        fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:batchData',message:'batch data received',data:{hasSummaries:!!data.summaries,summaryKeys:keys,error:data.error,perKey},timestamp:Date.now(),hypothesisId:'H1_H2'})}).catch(()=>{});
         // #endregion
         if (data.summaries && typeof data.summaries === 'object') {
           setSummariesByFileId(data.summaries);
@@ -196,13 +201,17 @@ export default function App() {
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleSummarizeOneResult',message:'fallback result',data:{fileId:String(fileId),hasSummary:!!data.summary,hasAudio:!!data.audioBase64,ok:!(data.error),error:data.error},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
       // #endregion
+      const stillViewing = String(currentFileRef.current?._id ?? currentFileRef.current?.id ?? '') === String(fileId);
       if (data.summary != null || data.audioBase64 != null) {
         setSummariesByFileId((prev) => ({ ...prev, [String(fileId)]: data }));
-        setSummary(data);
+        if (stillViewing) setSummary(data);
+        // #region agent log
+        else fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleSummarizeOneSkipSetSummary',message:'skipped setSummary, user switched',data:{fileId:String(fileId),currentId:String(currentFileRef.current?._id??currentFileRef.current?.id??'')},timestamp:Date.now(),hypothesisId:'race-fix',runId:'post-fix'})}).catch(()=>{});
+        // #endregion
       } else if (data.error) {
         const errData = { error: data.error, keyFindings: [], abnormalVitals: [], coreMetrics: {}, verbalSummary: data.error };
         setSummariesByFileId((prev) => ({ ...prev, [String(fileId)]: errData }));
-        setSummary(errData);
+        if (stillViewing) setSummary(errData);
       }
     } catch (e) {
       // #region agent log
@@ -227,8 +236,14 @@ export default function App() {
       if (altId && altId !== id) cached = summariesByFileId[altId];
     }
     const hasContent = !!(currentFile.content || currentFile.text);
-    const willAttemptFallback = !cached && !loading && hasContent && !fallbackRequestedRef.current.has(id) && typeof handleSummarizeOne === 'function';
-
+    const cachedHasError = !!(cached?.error || (cached?.summary || cached)?.error);
+    const willAttemptFallback = (!cached || cachedHasError) && !loading && hasContent && !fallbackRequestedRef.current.has(id) && typeof handleSummarizeOne === 'function';
+    // #region agent log
+    const s = cached?.summary || cached;
+    const kfLen = s?.keyFindings?.length ?? cached?.keyFindings?.length ?? 0;
+    const vb = s?.verbalSummary ?? cached?.verbalSummary ?? '';
+    fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:deriveSummary',message:'derive effect',data:{id,currentTitle:currentFile.title,cacheKeys:Object.keys(summariesByFileId),hasCached:!!cached,cachedError:!!cached?.error,loading,willAttemptFallback,kfLen,vbLen:vb?.length??0,vbSnippet:String(vb).slice(0,120),cachedFromSingle:!!cached?.audioBase64},timestamp:Date.now(),hypothesisId:'H6_H7'})}).catch(()=>{});
+    // #endregion
     setSummary(cached ?? null);
     if (willAttemptFallback) {
       fallbackRequestedRef.current.add(id);
@@ -299,6 +314,56 @@ export default function App() {
     };
   }, []);
 
+  // ESP8266 serial: U/D = scroll MRI slices, finger present = show popup (via SSE)
+  const espFingerTimeoutRef = useRef(null);
+  useEffect(() => {
+    let es = null;
+    let retryTimer;
+    let connectTimer;
+    let cancelled = false;
+    let failCount = 0;
+    const maxRetries = 5;
+    const FINGER_TIMEOUT_MS = 800;
+    const connect = () => {
+      if (cancelled || failCount >= maxRetries) return;
+      const url = `${API}/esp8266/stream`;
+      es = new EventSource(url);
+      es.onopen = () => { failCount = 0; };
+      es.onmessage = (e) => {
+        try {
+          const msg = JSON.parse(e.data);
+          if (msg.inactive) {
+            setIsFingerPresent(false);
+            return;
+          }
+          const dir = msg.direction;
+          if (dir === 'U' || dir === 'D') {
+            setIsFingerPresent(true);
+            setMriSliceIndex((i) => (dir === 'U' ? Math.max(0, i - 1) : i + 1));
+          }
+          if (espFingerTimeoutRef.current) clearTimeout(espFingerTimeoutRef.current);
+          espFingerTimeoutRef.current = setTimeout(() => setIsFingerPresent(false), FINGER_TIMEOUT_MS);
+        } catch {}
+      };
+      es.onerror = () => {
+        es?.close();
+        es = null;
+        if (!cancelled) {
+          failCount += 1;
+          if (failCount < maxRetries) retryTimer = setTimeout(connect, 3000);
+        }
+      };
+    };
+    connectTimer = setTimeout(connect, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(connectTimer);
+      clearTimeout(retryTimer);
+      if (espFingerTimeoutRef.current) clearTimeout(espFingerTimeoutRef.current);
+      if (es) es.close();
+    };
+  }, []);
+
   const handleSelectFile = (file) => {
     setCurrentFile(file);
     setCurrentIndex(files.findIndex((f) => f._id === file._id));
@@ -306,6 +371,8 @@ export default function App() {
 
   const audioRef = useRef(null);
   const blobUrlRef = useRef(null);
+  const currentFileRef = useRef(currentFile);
+  currentFileRef.current = currentFile;
 
   const handlePlayAudio = useCallback(async () => {
     const s = summary?.summary || summary;
@@ -475,6 +542,7 @@ export default function App() {
         <span className="scroll-target-hint">3 fingers = switch (2s cooldown)</span>
       </div>
       <GestureStatus gesture={lastGesture} />
+      <MRISlicePopup visible={isFingerPresent} sliceIndex={mriSliceIndex} />
     </div>
   );
 }

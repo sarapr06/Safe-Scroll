@@ -634,3 +634,78 @@
   font-size: 0.8rem;
   color: var(--valentine-muted);
 }
+
+/* MRI Slice Popup (ESP8266 finger-gesture overlay) */
+.mri-slice-popup {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: mri-popup-fade-in 0.2s ease-out;
+}
+
+@keyframes mri-popup-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.mri-slice-popup-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(4px);
+}
+
+.mri-slice-popup-content {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  max-width: 95vw;
+  max-height: 95vh;
+  background: #1a1a1a;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.mri-slice-popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background: rgba(244, 114, 182, 0.15);
+  color: var(--valentine-rose);
+  font-size: 0.95rem;
+}
+
+.mri-slice-popup-title {
+  font-weight: 600;
+}
+
+.mri-slice-popup-counter {
+  font-variant-numeric: tabular-nums;
+  color: var(--valentine-muted);
+}
+
+.mri-slice-popup-image-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  padding: 1rem;
+}
+
+.mri-slice-popup-img {
+  max-width: 100%;
+  max-height: 80vh;
+  object-fit: contain;
+}
+
+.mri-slice-popup-loading,
+.mri-slice-popup-empty {
+  color: var(--valentine-muted);
+  font-size: 0.9rem;
+}
