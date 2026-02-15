@@ -11,8 +11,13 @@ const FIST_GESTURE_MIN_SCORE = 0.2;
 const GESTURE_MIN_SCORE = 0.3;  // Pointing_Up, Victory, Open_Palm, ILoveYou (matches classifier)
 
 const THREE_FINGER_COOLDOWN_MS = 2000;  // 2s cooldown before gesture can trigger again
+// L-shape: index pointing up + thumb to the side (Voice QA)
+const L_INDEX_MIN_LEN = 0.06;     // index finger must be extended
+const L_THUMB_MIN_LEN = 0.04;     // thumb must be extended outward
+const L_PERPENDICULAR_MAX = 0.55; // |cos(angle)| < this (vectors ~90° apart)
+const L_HOLD_MS = 1000;           // must hold L-shape for 1s before activating
 
-export function CameraMirror({ onWaveLeft, onWaveRight, onScrollUp, onScrollDown, onSwitchScrollTarget, onPlayAudio, onUserGesture }) {
+export function CameraMirror({ onWaveLeft, onWaveRight, onScrollUp, onScrollDown, onSwitchScrollTarget, onPlayAudio, onUserGesture, onPinchStart, onPinchStop }) {
   const [presageMetrics, setPresageMetrics] = useState(null);
   const [handDetected, setHandDetected] = useState(false);
   const handDetectedTimeoutRef = useRef(null);
@@ -29,6 +34,9 @@ export function CameraMirror({ onWaveLeft, onWaveRight, onScrollUp, onScrollDown
   const lastVWaveTimeRef = useRef(0);
   const lastFistTimeRef = useRef(0);
   const lastThreeFingerTimeRef = useRef(0);
+  const wasLShapeRef = useRef(false);
+  const lShapeFirstSeenRef = useRef(null);
+  const lShapeHoldTriggeredRef = useRef(false);
   const scrollIntervalRef = useRef(null);
   const scrollDirectionRef = useRef(null);
   const rafRef = useRef(null);
@@ -77,6 +85,49 @@ export function CameraMirror({ onWaveLeft, onWaveRight, onScrollUp, onScrollDown
       onPlayAudio?.();
       fetch(`${API}/gestures`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'fist', value: 'hand_fist' }) }).catch(() => {});
       return;
+    }
+
+    // L-shape (index up + thumb to side): Voice QA - check BEFORE scroll so it takes precedence over Pointing_Up
+    if ((onPinchStart || onPinchStop) && landmarks.length >= 9) {
+      const indexMcp = landmarks[5];
+      const indexTip = landmarks[8];
+      const thumbTip = landmarks[4];
+      const ax = indexTip.x - indexMcp.x;
+      const ay = indexTip.y - indexMcp.y;
+      const bx = thumbTip.x - indexMcp.x;
+      const by = thumbTip.y - indexMcp.y;
+      const lenA = Math.sqrt(ax * ax + ay * ay) || 1e-6;
+      const lenB = Math.sqrt(bx * bx + by * by) || 1e-6;
+      const cosAngle = (ax * bx + ay * by) / (lenA * lenB);
+      const indexUp = lenA >= L_INDEX_MIN_LEN && ay < 0;
+      const thumbOut = lenB >= L_THUMB_MIN_LEN;
+      const isLShape = indexUp && thumbOut && Math.abs(cosAngle) <= L_PERPENDICULAR_MAX;
+      const wasLShape = wasLShapeRef.current;
+
+      if (!isLShape) {
+        lShapeFirstSeenRef.current = null;
+        lShapeHoldTriggeredRef.current = false;
+        wasLShapeRef.current = false;
+        if (wasLShape) {
+          clearScrollInterval();
+          onPinchStop?.();
+          fetch(`${API}/gestures`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'lshape_stop', value: 'voice_qa' }) }).catch(() => {});
+        }
+        // not in L-shape, fall through to scroll
+      } else {
+        if (lShapeFirstSeenRef.current == null) lShapeFirstSeenRef.current = now;
+        const heldMs = now - lShapeFirstSeenRef.current;
+        if (heldMs >= L_HOLD_MS && !lShapeHoldTriggeredRef.current) {
+          lShapeHoldTriggeredRef.current = true;
+          wasLShapeRef.current = true;
+          clearScrollInterval();
+          onPinchStart?.();
+          fetch(`${API}/gestures`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'lshape_start', value: 'voice_qa' }) }).catch(() => {});
+        } else if (lShapeHoldTriggeredRef.current) {
+          wasLShapeRef.current = true;
+        }
+        return;  // in L-shape, skip scroll gestures
+      }
     }
 
     // Content scroll: 1 finger = scroll up, 2 fingers = scroll down, open palm = stop (check first)
@@ -148,7 +199,7 @@ export function CameraMirror({ onWaveLeft, onWaveRight, onScrollUp, onScrollDown
         fetch(`${API}/gestures`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'swipe_right', value: 'hand_wave' }) }).catch(() => {});
       }
     }
-  }, [onWaveLeft, onWaveRight, onScrollUp, onScrollDown, onSwitchScrollTarget, onPlayAudio, onUserGesture, clearScrollInterval]);
+  }, [onWaveLeft, onWaveRight, onScrollUp, onScrollDown, onSwitchScrollTarget, onPlayAudio, onUserGesture, onPinchStart, onPinchStop, clearScrollInterval]);
 
   useEffect(() => {
     let failCount = 0;
@@ -190,6 +241,13 @@ export function CameraMirror({ onWaveLeft, onWaveRight, onScrollUp, onScrollDown
         handDetectedTimeoutRef.current = setTimeout(() => setHandDetected(false), 500);
         processGestures(results);
       } else {
+        if (wasLShapeRef.current && gestureRecognizer) {
+          wasLShapeRef.current = false;
+          lShapeFirstSeenRef.current = null;
+          lShapeHoldTriggeredRef.current = false;
+          const stop = typeof onPinchStop === 'function' ? onPinchStop : null;
+          if (stop) stop();
+        }
         if (scrollIntervalRef.current) {
           clearInterval(scrollIntervalRef.current);
           scrollIntervalRef.current = null;
@@ -202,7 +260,7 @@ export function CameraMirror({ onWaveLeft, onWaveRight, onScrollUp, onScrollDown
       }
     } catch {}
     rafRef.current = requestAnimationFrame(processFrame);
-  }, [processGestures]);
+  }, [processGestures, onPinchStop]);
 
   useEffect(() => {
     if (!active) return;
@@ -257,7 +315,7 @@ export function CameraMirror({ onWaveLeft, onWaveRight, onScrollUp, onScrollDown
   return (
     <div className="camera-mirror">
       <div className="camera-instructions">
-        <p className="camera-instructions-note">Uses camera (no mic). Speakers for audio.</p>
+        <p className="camera-instructions-note">Uses camera{(onPinchStart || onPinchStop) ? ' and mic' : ''}. Speakers for audio.</p>
         <div className="camera-instructions-row">
           <span>← →</span> <span className="camera-instructions-label">files</span>
         </div>
@@ -276,6 +334,11 @@ export function CameraMirror({ onWaveLeft, onWaveRight, onScrollUp, onScrollDown
         <div className="camera-instructions-row">
           <span>✊</span> <span className="camera-instructions-label">closed fist = play audio</span>
         </div>
+        {(onPinchStart || onPinchStop) && (
+          <div className="camera-instructions-row">
+            <span>👆👍</span> <span className="camera-instructions-label">hold L-shape 1s = record, relax = send</span>
+          </div>
+        )}
       </div>
       <button
         type="button"

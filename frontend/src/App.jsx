@@ -11,8 +11,10 @@ import './App.css';
 import './components.css';
 import { DEMO_PATIENTS } from './demoPatients.js';
 import { DEMO_IMAGING } from './demoImaging.js';
+import { ENABLE_VOICE_QA } from './featureFlags.js';
 
 const API = '/api';
+const VOICE_QA_RECORD_MAX_MS = 60000;  // 60s max safety if release not detected
 
 export default function App() {
   const [files, setFiles] = useState([]);
@@ -29,6 +31,10 @@ export default function App() {
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [isFingerPresent, setIsFingerPresent] = useState(false);
   const [mriSliceIndex, setMriSliceIndex] = useState(0);
+  const [voiceQaPhase, setVoiceQaPhase] = useState('idle'); // idle | recording | transcribing | answering | speaking
+  const [voiceQaQuestion, setVoiceQaQuestion] = useState('');
+  const [voiceQaLiveTranscript, setVoiceQaLiveTranscript] = useState(''); // live during recording
+  const [voiceQaAnswer, setVoiceQaAnswer] = useState('');
 
   const goPrev = useCallback(() => {
     if (files.length === 0) return;
@@ -75,21 +81,27 @@ export default function App() {
     }
   }, [files, currentFile]);
 
-  // Announce patient name when loading a patient
+  // Announce patient name and ID when loading/switching a patient
   const getPatientName = useCallback((file) =>
     file ? (file.title?.replace(/^(Peri-Operative Record|Patient Report Sheet) - /, '') || file.patientId) : null
   , []);
+  const getSpeakableId = useCallback((id) =>
+    id ? String(id).replace(/^MR/i, 'M R ') : ''
+  , []);
   useEffect(() => {
+    if (!currentFile || typeof speechSynthesis === 'undefined' || !speechSynthesis.speak) return;
     const name = getPatientName(currentFile);
-    if (!name || typeof speechSynthesis === 'undefined' || !speechSynthesis.speak) return;
+    const id = currentFile.patientId ? getSpeakableId(currentFile.patientId) : '';
+    const text = id ? `${name}, ID ${id}` : name;
+    if (!text.trim()) return;
     speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(name);
+    const u = new SpeechSynthesisUtterance(text);
     u.rate = 0.95;
     u.lang = 'en-US';
     const voices = speechSynthesis.getVoices();
     if (voices?.length > 0) u.voice = voices[0];
     speechSynthesis.speak(u);
-  }, [currentFile, getPatientName]);
+  }, [currentFile, getPatientName, getSpeakableId]);
 
   const initialLoadDone = useRef(false);
   const loadFiles = useCallback(() => {
@@ -464,6 +476,201 @@ export default function App() {
     }
   }, [summary, loading, currentFile?._id, audioCache]);
 
+  const stopAllAudio = useCallback(() => {
+    if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
+    const audio = audioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.currentTime = 0;
+      audio.src = '';
+    }
+    setIsPlayingAudio(false);
+  }, []);
+
+  const voiceQaStopResolveRef = useRef(null);
+
+  const handlePinchStart = useCallback(async () => {
+    if (!ENABLE_VOICE_QA) return;
+    stopAllAudio();
+    if (voiceQaPhase !== 'idle' && voiceQaPhase !== 'speaking') return;
+    setVoiceQaQuestion('');
+    setVoiceQaAnswer('');
+    setVoiceQaLiveTranscript('');
+    setVoiceQaPhase('recording');
+
+    let stream = null;
+    let recorder = null;
+    let recognition = null;
+    const chunks = [];
+    voiceQaStopResolveRef.current = null;
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let liveAccumulated = '';
+    if (SpeechRecognition) {
+      recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+      recognition.onresult = (e) => {
+        let curr = '';
+        for (let i = 0; i < e.results.length; i++) {
+          curr += e.results[i][0].transcript;
+          if (e.results[i].isFinal) {
+            liveAccumulated += curr + ' ';
+            curr = '';
+          }
+        }
+        setVoiceQaLiveTranscript((liveAccumulated + curr).trim());
+      };
+    }
+
+    const waitForRelease = new Promise((resolve) => { voiceQaStopResolveRef.current = resolve; });
+
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recorder = new MediaRecorder(stream);
+      recorder.ondataavailable = (e) => e.data?.size && chunks.push(e.data);
+      const recStopped = new Promise((resolve) => { recorder.onstop = resolve; });
+      recorder.start();
+      if (recognition) recognition.start();
+
+      await Promise.race([
+        waitForRelease,
+        new Promise((resolve) => setTimeout(resolve, VOICE_QA_RECORD_MAX_MS)),
+      ]);
+      if (recorder.state === 'recording') recorder.stop();
+      await recStopped;
+      if (recognition) try { recognition.stop(); } catch {}
+    } catch (e) {
+      setVoiceQaAnswer(`Microphone error: ${e.message || 'Permission denied?'}`);
+      setVoiceQaPhase('idle');
+      setVoiceQaLiveTranscript('');
+      return;
+    } finally {
+      stream?.getTracks()?.forEach((t) => t.stop());
+      voiceQaStopResolveRef.current = null;
+    }
+
+    const blob = new Blob(chunks, { type: 'audio/webm' });
+    if (blob.size < 100) {
+      setVoiceQaPhase('idle');
+      return;
+    }
+
+    const liveTranscript = liveAccumulated.trim();
+    setVoiceQaLiveTranscript('');
+    let transcript = liveTranscript;
+    if (!liveTranscript) {
+      setVoiceQaPhase('transcribing');
+      try {
+        const trRes = await fetch(`${API}/voice-qa/transcribe`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'audio/webm' },
+          body: blob,
+        });
+        const trData = await trRes.json().catch(() => ({}));
+        transcript = (trData.text || trData.transcript || '').trim();
+        if (!trRes.ok) {
+          setVoiceQaAnswer(`Transcription failed: ${trData.error || trRes.status}`);
+          setVoiceQaPhase('idle');
+          return;
+        }
+      } catch (e) {
+        setVoiceQaAnswer(`Transcription failed: ${e.message || 'Unknown error'}`);
+        setVoiceQaPhase('idle');
+        return;
+      }
+    }
+
+    const finalTranscript = transcript;
+    setVoiceQaQuestion(finalTranscript || '(no speech detected)');
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:voiceQa-postTranscribe',message:'after transcribe',data:{transcriptLen:transcript?.length,liveLen:liveTranscript?.length,finalLen:finalTranscript?.length,finalEmpty:!finalTranscript?.trim(),willProceed:!!finalTranscript?.trim()},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+    // #endregion
+    if (!finalTranscript) {
+      setVoiceQaAnswer('No speech was detected. Please try again.');
+      setVoiceQaPhase('idle');
+      return;
+    }
+
+    setVoiceQaPhase('answering');
+    const patientContent = currentFileRef.current?.content || currentFileRef.current?.text || '';
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:voiceQa-beforeAnswer',message:'about to fetch answer',data:{questionLen:finalTranscript?.length,patientContentLen:patientContent?.length},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
+    // #endregion
+    try {
+      const ansRes = await fetch(`${API}/voice-qa/answer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: finalTranscript, patientContent }),
+      });
+      const ansData = await ansRes.json().catch(() => ({}));
+      const answer = ansData.answer || ansData.error || (ansRes.ok ? 'No answer.' : `Server error (${ansRes.status})`);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:voiceQa-afterAnswer',message:'answer fetch done',data:{ok:ansRes.ok,status:ansRes.status,hasAnswer:!!answer,answerLen:answer?.length,hasAudio:!!ansData?.audioBase64,keys:Object.keys(ansData||{})},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
+      // #endregion
+      setVoiceQaAnswer(answer);
+
+      setVoiceQaPhase('speaking');
+      const audioBase64 = ansData.audioBase64;
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:voiceQa-speaking',message:'entering speak path',data:{hasAudio:!!audioBase64,answerLen:answer?.length},timestamp:Date.now(),hypothesisId:'H5'})}).catch(()=>{});
+      // #endregion
+      const speakAnswer = (fromFallback = false) => {
+        // #region agent log
+        if (fromFallback) fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:voiceQa-speakFallback',message:'audio.play failed, using speechSynthesis',data:{},timestamp:Date.now(),hypothesisId:'H5',runId:'post-fix'})}).catch(()=>{});
+        // #endregion
+        if (typeof speechSynthesis !== 'undefined' && speechSynthesis.speak && answer) {
+          speechSynthesis.cancel();
+          const u = new SpeechSynthesisUtterance(answer);
+          u.rate = 0.95;
+          u.lang = 'en-US';
+          const voices = speechSynthesis.getVoices();
+          if (voices?.length > 0) u.voice = voices[0];
+          u.onend = () => setVoiceQaPhase('idle');
+          speechSynthesis.speak(u);
+        } else {
+          setVoiceQaPhase('idle');
+        }
+      };
+      if (audioBase64) {
+        try {
+          if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
+          const binary = atob(audioBase64);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          const audioBlob = new Blob([bytes], { type: 'audio/mpeg' });
+          const url = URL.createObjectURL(audioBlob);
+          blobUrlRef.current = url;
+          const audio = audioRef.current || new Audio();
+          if (!audioRef.current) audioRef.current = audio;
+          audio.src = url;
+          audio.onended = () => {
+            if (blobUrlRef.current) { URL.revokeObjectURL(blobUrlRef.current); blobUrlRef.current = null; }
+            setVoiceQaPhase('idle');
+          };
+          audio.play().catch(() => speakAnswer(true));
+        } catch {
+          speakAnswer(false);
+        }
+      } else {
+        speakAnswer(false);
+      }
+    } catch (e) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:voiceQa-answerCatch',message:'answer fetch threw',data:{err:String(e?.message||e),stack:(e?.stack||'').slice(0,200)},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
+      // #endregion
+      setVoiceQaAnswer(`Error: ${e.message || 'Failed to get answer'}`);
+      setVoiceQaPhase('idle');
+    }
+  }, [stopAllAudio, voiceQaPhase]);
+
+  const handlePinchStop = useCallback(() => {
+    if (voiceQaPhase === 'recording' && voiceQaStopResolveRef.current) {
+      voiceQaStopResolveRef.current();
+    }
+  }, [voiceQaPhase]);
+
   const handleUserGesture = useCallback(() => {
     if (typeof speechSynthesis === 'undefined') return;
     speechSynthesis.getVoices();
@@ -504,6 +711,8 @@ export default function App() {
             onSwitchScrollTarget={handleSwitchScrollTarget}
             onPlayAudio={handlePlayAudio}
             onUserGesture={handleUserGesture}
+            onPinchStart={ENABLE_VOICE_QA ? handlePinchStart : undefined}
+            onPinchStop={ENABLE_VOICE_QA ? handlePinchStop : undefined}
           />
           <FileList
             files={files}
@@ -543,6 +752,28 @@ export default function App() {
       </div>
       <GestureStatus gesture={lastGesture} />
       <MRISlicePopup visible={isFingerPresent} sliceIndex={mriSliceIndex} currentFile={currentFile} />
+      {ENABLE_VOICE_QA && voiceQaPhase !== 'idle' && (
+        <div className="voice-qa-panel" role="status" aria-live="polite">
+          <div className="voice-qa-phase">
+            {voiceQaPhase === 'recording' && '🎤 Recording…'}
+            {voiceQaPhase === 'transcribing' && '⏳ Transcribing…'}
+            {voiceQaPhase === 'answering' && (
+              <>
+                <span>🤖 Asking Gemini…</span>
+                <span className="voice-qa-phase-sub">Buffering response based on patient data…</span>
+              </>
+            )}
+            {voiceQaPhase === 'speaking' && '🔊 Speaking answer…'}
+          </div>
+          {(voiceQaPhase === 'recording' && (voiceQaLiveTranscript || true)) || voiceQaQuestion ? (
+            <div className="voice-qa-question">
+              {voiceQaPhase === 'recording' ? 'Listening: ' : 'You asked: '}
+              {voiceQaPhase === 'recording' ? (voiceQaLiveTranscript || '…') : voiceQaQuestion}
+            </div>
+          ) : null}
+          {voiceQaAnswer && <div className="voice-qa-answer">{voiceQaAnswer}</div>}
+        </div>
+      )}
     </div>
   );
 }

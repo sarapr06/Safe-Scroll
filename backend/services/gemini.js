@@ -226,3 +226,33 @@ ${blocks}`;
     return fallback;
   }
 }
+
+/**
+ * Answer a question about a patient using their file content.
+ * @param {string} question - User's transcribed question
+ * @param {string} patientContent - Patient file content for context
+ * @returns {Promise<string>} Answer text
+ */
+export async function answerPatientQuestion(question, patientContent) {
+  if (!question?.trim()) return 'No question was heard. Please try again.';
+
+  const prompt = `You are a medical assistant. A clinician has asked a question about their current patient.
+Answer concisely in 2-4 sentences. Base your answer only on the patient information provided.
+If the information does not contain enough to answer, say so clearly.
+
+Patient information:
+---
+${(patientContent || '').slice(0, 12000)}
+---
+
+Question: ${question.trim()}
+
+Answer:`;
+
+  try {
+    return await callGeminiREST(GEMINI_MODEL, prompt);
+  } catch (e) {
+    console.error('[Gemini] answerPatientQuestion:', e.message);
+    return `I couldn't process that. ${e.message?.slice(0, 100) || 'Please try again.'}`;
+  }
+}

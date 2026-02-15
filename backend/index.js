@@ -15,6 +15,7 @@ import { imagingRouter } from './routes/imaging.js';
 import { summarizeRouter } from './routes/summarize.js';
 import { presageRouter } from './routes/presage.js';
 import { fmriniiRouter } from './routes/fmrinii.js';
+import { voiceQaRouter } from './routes/voiceQa.js';
 import { connectDb } from './db.js';
 import { seedPatientFmrinii } from './scripts/seedPatientFmrinii.js';
 import { GEMINI_MODEL } from './services/gemini.js';
@@ -32,6 +33,7 @@ app.use('/api/imaging', imagingRouter);
 app.use('/api/summarize', summarizeRouter);
 app.use('/api/presage', presageRouter);
 app.use('/api/fmrinii', fmriniiRouter);
+app.use('/api/voice-qa', voiceQaRouter);
 
 app.get('/api/esp8266/stream', (req, res) => {
   const clients = getEsp8266SSEClients();

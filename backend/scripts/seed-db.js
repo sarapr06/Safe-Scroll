@@ -12,7 +12,7 @@ const sampleFiles = [
   {
     patientId: 'P001',
     title: 'John Doe - Admission Notes',
-    content: `ADMISSION NOTES - 2024-01-15
+    content: `ADMISSION NOTES - 2026-01-15
 Patient: John Doe, M, 58yo
 Chief complaint: Chest pain x 2 hours
 
@@ -36,7 +36,7 @@ Plan: Cath lab, ASA 325mg, Plavix 600mg load.`,
   {
     patientId: 'P002',
     title: 'Jane Smith - Lab Results',
-    content: `LAB RESULTS - 2024-01-16
+    content: `LAB RESULTS - 2026-01-16
 Patient: Jane Smith, F, 34yo
 
 CBC:

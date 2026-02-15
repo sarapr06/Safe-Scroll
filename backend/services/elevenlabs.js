@@ -29,3 +29,32 @@ export async function textToSpeech(text) {
   }
   return Buffer.concat(chunks);
 }
+
+/**
+ * Transcribe audio to text using ElevenLabs Speech-to-Text.
+ * @param {Buffer} audioBuffer - Raw audio (e.g. webm from MediaRecorder)
+ * @param {string} [mimeType] - e.g. 'audio/webm'
+ * @returns {Promise<string>} Transcript text
+ */
+export async function speechToText(audioBuffer, mimeType = 'audio/webm') {
+  const key = process.env.ELEVENLABS_API_KEY;
+  if (!key) throw new Error('ELEVENLABS_API_KEY required');
+
+  const form = new FormData();
+  form.append('model_id', 'scribe_v2');
+  form.append('file', new Blob([audioBuffer], { type: mimeType }), 'recording.webm');
+
+  const res = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
+    method: 'POST',
+    headers: { 'xi-api-key': key },
+    body: form,
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.detail?.message || json.message || json.detail || `ElevenLabs STT ${res.status}`);
+
+  let text = json.text ?? json.transcript ?? json.transcripts?.[0]?.text ?? '';
+  if (!text && Array.isArray(json.words)) {
+    text = json.words.map((w) => w?.text).filter(Boolean).join(' ');
+  }
+  return String(text).trim() || '';
+}

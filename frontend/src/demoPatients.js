@@ -11,7 +11,7 @@ export const DEMO_PATIENTS = [
     content: `PERI-OPERATIVE RECORD - Page 1 of 3
 
 Patient: Jennifer Lofgreen  |  MR#: MR847291
-Date: 2024-02-14  |  Suite #: 3
+Date: 2026-02-14  |  Suite #: 3
 
 TIMING:
 Patient in Room: 07:30
@@ -91,7 +91,7 @@ Recent labs/imaging: CBC, BMP, EKG within normal limits`,
     content: `PERI-OPERATIVE RECORD - Page 1 of 3
 
 Patient: Chris Yip  |  MR#: MR923104
-Date: 2024-02-14  |  Suite #: 7
+Date: 2026-02-14  |  Suite #: 7
 
 TIMING:
 Patient in Room: 09:00
@@ -125,7 +125,7 @@ Anesthesia Provider: Dr. Kim`,
     content: `PERI-OPERATIVE RECORD - Page 1 of 2
 
 Patient: Mary Pugh  |  MR#: MR451082
-Date: 2024-02-15  |  Suite #: 2
+Date: 2026-02-15  |  Suite #: 2
 
 TIMING:
 Patient in Room: 08:00
@@ -195,7 +195,7 @@ Recent: Blood cultures drawn, CRP elevated`,
     content: `PERI-OPERATIVE RECORD
 
 Patient: Murdock Aubry  |  MR#: MR552193
-Date: 2024-02-15  |  Suite #: 5
+Date: 2026-02-15  |  Suite #: 5
 
 TIMING:
 Patient in Room: 10:30
@@ -264,7 +264,7 @@ Activity: Up ad lib`,
     content: `PERI-OPERATIVE RECORD
 
 Patient: J. W. Davis  |  MR#: MR668041
-Date: 2024-02-16  |  Suite #: 1
+Date: 2026-02-16  |  Suite #: 1
 
 TIMING:
 Patient in Room: 07:15
@@ -332,7 +332,7 @@ Pending: Echo, Cardiology follow-up`,
     content: `PERI-OPERATIVE RECORD
 
 Patient: Jay Werber  |  MR#: MR771205
-Date: 2024-02-16  |  Suite #: 4
+Date: 2026-02-16  |  Suite #: 4
 
 TIMING:
 Patient in Room: 11:00
@@ -365,7 +365,7 @@ Anesthesia Provider: Dr. Ross`,
     content: `PERI-OPERATIVE RECORD
 
 Patient: Mary Pugh  |  MR#: MR883617
-Date: 2024-02-17  |  Suite #: 6
+Date: 2026-02-17  |  Suite #: 6
 
 TIMING:
 Patient in Room: 09:00
@@ -420,7 +420,7 @@ Disposition: Discharge today`,
     content: `PERI-OPERATIVE RECORD
 
 Patient: Vardan Papyan  |  MR#: MR994328
-Date: 2024-02-18  |  Suite #: 3
+Date: 2026-02-18  |  Suite #: 3
 
 TIMING:
 Patient in Room: 08:30
