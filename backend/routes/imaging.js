@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getCollection } from '../db.js';
+import { getCollection, isDbConnected } from '../db.js';
 import { IMAGING_TYPES } from '../constants/imaging.js';
 
 export const imagingRouter = Router();
@@ -9,6 +9,7 @@ export const imagingRouter = Router();
  * Returns all imaging studies for a patient.
  */
 imagingRouter.get('/', async (req, res) => {
+  if (!isDbConnected()) return res.json([]);
   try {
     const { patientId } = req.query;
     if (!patientId) {

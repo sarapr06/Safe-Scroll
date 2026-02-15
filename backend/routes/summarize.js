@@ -19,8 +19,8 @@ summarizeRouter.post('/', async (req, res) => {
     try {
       const audioBuffer = await textToSpeech(verbalSummary);
       audioBase64 = audioBuffer.toString('base64');
-    } catch (e) {
-      console.warn('ElevenLabs error:', e.message);
+    } catch {
+      /* ElevenLabs failed; audio omitted, UI uses speechSynthesis */
     }
 
     res.json({ summary, audioBase64 });

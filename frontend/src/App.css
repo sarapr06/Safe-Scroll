@@ -33,8 +33,15 @@
   right: 1.5rem;
   top: 50%;
   transform: translateY(-50%);
-  font-size: 1.2rem;
-  opacity: 0.7;
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+}
+.hearts img {
+  width: 2.4rem;
+  height: 2.4rem;
+  object-fit: contain;
+  opacity: 0.9;
 }
 
 .main {
@@ -91,6 +98,17 @@
 
 .content--scroll-target {
   box-shadow: 0 4px 20px rgba(225, 29, 72, 0.08), 0 0 0 2px var(--valentine-rose);
+  border-color: var(--valentine-rose);
+}
+
+.file-list-wrapper {
+  border-radius: 12px;
+  border: 1px solid transparent;
+  transition: box-shadow 0.2s, border-color 0.2s;
+}
+
+.file-list-wrapper--scroll-target {
+  box-shadow: 0 0 0 2px var(--valentine-rose);
   border-color: var(--valentine-rose);
 }
 

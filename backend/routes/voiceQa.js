@@ -20,6 +20,9 @@ voiceQaRouter.post('/transcribe', express.raw({ type: ['audio/webm', 'audio/ogg'
     res.json({ text });
   } catch (e) {
     console.error('[voice-qa/transcribe]', e.message);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'voiceQa.js:transcribeCatch',message:'transcribe error detail',data:{msg:e.message,causeMsg:e.cause?.message,causeCode:e.cause?.code,code:e.code},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
+    // #endregion
     res.status(500).json({ error: e.message || 'Transcription failed' });
   }
 });
@@ -43,8 +46,8 @@ voiceQaRouter.post('/answer', async (req, res) => {
     try {
       const audioBuffer = await textToSpeech(answer.slice(0, 2500));
       audioBase64 = audioBuffer.toString('base64');
-    } catch (e) {
-      console.warn('[voice-qa/answer] ElevenLabs TTS:', e.message);
+    } catch {
+      /* ElevenLabs failed; frontend uses speechSynthesis */
     }
     res.json({ answer, audioBase64 });
   } catch (e) {

@@ -24,7 +24,7 @@ export function NiftiViewer({ url, label = 'MRI Volume' }) {
     setLoading(true);
     setError(null);
     const nv = new Niivue({
-      loglevel: 'warn',
+      loglevel: 'error',
       crosshairColor: [1, 0, 0, 0.5],
       backColor: [0.2, 0.2, 0.2, 1],
       onLocationChange: (data) => {

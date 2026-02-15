@@ -6,6 +6,8 @@ const WAVE_THRESHOLD = 0.035;
 const COOLDOWN_MS = 400;
 const FIST_COOLDOWN_MS = 5000;
 const SCROLL_HOLD_INTERVAL_MS = 180;  // ms between scroll ticks while holding gesture
+const SCROLL_GRACE_MS = 400;          // tolerate gesture flicker before stopping scroll
+const SCROLL_DIR_SWITCH_MS = 500;     // require opposite gesture held this long before switching direction
 const SMOOTH = 0.25;
 const FIST_GESTURE_MIN_SCORE = 0.2;
 const GESTURE_MIN_SCORE = 0.3;  // Pointing_Up, Victory, Open_Palm, ILoveYou (matches classifier)
@@ -15,9 +17,13 @@ const THREE_FINGER_COOLDOWN_MS = 2000;  // 2s cooldown before gesture can trigge
 const L_INDEX_MIN_LEN = 0.06;     // index finger must be extended
 const L_THUMB_MIN_LEN = 0.04;     // thumb must be extended outward
 const L_PERPENDICULAR_MAX = 0.55; // |cos(angle)| < this (vectors ~90° apart)
+const L_OTHER_FINGERS_MAX_LEN = 0.095;     // fallback: absolute max for curled (tip-MCP dist)
+const L_OTHER_VS_INDEX_RATIO = 0.55;       // middle/ring/pinky must be < indexLen * this (relative check)
 const L_HOLD_MS = 1000;           // must hold L-shape for 1s before activating
 
-export function CameraMirror({ onWaveLeft, onWaveRight, onScrollUp, onScrollDown, onSwitchScrollTarget, onPlayAudio, onUserGesture, onPinchStart, onPinchStop }) {
+const THUMB_UP_COOLDOWN_MS = 800;
+
+export function CameraMirror({ onWaveLeft, onWaveRight, onScrollUp, onScrollDown, onScrollHoldStart, onScrollHoldStop, onSwitchScrollTarget, onThumbsUp, onPlayAudio, onUserGesture, onPinchStart, onPinchStop, scrollTarget }) {
   const [presageMetrics, setPresageMetrics] = useState(null);
   const [handDetected, setHandDetected] = useState(false);
   const handDetectedTimeoutRef = useRef(null);
@@ -34,12 +40,16 @@ export function CameraMirror({ onWaveLeft, onWaveRight, onScrollUp, onScrollDown
   const lastVWaveTimeRef = useRef(0);
   const lastFistTimeRef = useRef(0);
   const lastThreeFingerTimeRef = useRef(0);
+  const lastThumbsUpTimeRef = useRef(0);
   const wasLShapeRef = useRef(false);
   const lShapeFirstSeenRef = useRef(null);
   const lShapeHoldTriggeredRef = useRef(false);
   const scrollIntervalRef = useRef(null);
   const scrollDirectionRef = useRef(null);
+  const lastScrollGestureSeenRef = useRef(0);
+  const lastOppositeGestureSeenRef = useRef(null);  // when we first saw the opposite direction
   const rafRef = useRef(null);
+  const lastLShapeFailLogRef = useRef(0);
 
   const clearScrollInterval = useCallback(() => {
     if (scrollIntervalRef.current) {
@@ -82,13 +92,16 @@ export function CameraMirror({ onWaveLeft, onWaveRight, onScrollUp, onScrollDown
       lastHandYRef.current = null;
       smoothedXRef.current = null;
       smoothedYRef.current = null;
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CameraMirror.jsx:fist',message:'fist detected, calling onPlayAudio',data:{hasOnPlayAudio:!!onPlayAudio},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
       onPlayAudio?.();
       fetch(`${API}/gestures`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'fist', value: 'hand_fist' }) }).catch(() => {});
       return;
     }
 
-    // L-shape (index up + thumb to side): Voice QA - check BEFORE scroll so it takes precedence over Pointing_Up
-    if ((onPinchStart || onPinchStop) && landmarks.length >= 9) {
+    // L-shape (index up + thumb to side): Voice QA - skip when browsing files (user wants scroll, not record)
+    if (scrollTarget !== 'files' && (onPinchStart || onPinchStop) && landmarks.length >= 21) {
       const indexMcp = landmarks[5];
       const indexTip = landmarks[8];
       const thumbTip = landmarks[4];
@@ -101,8 +114,23 @@ export function CameraMirror({ onWaveLeft, onWaveRight, onScrollUp, onScrollDown
       const cosAngle = (ax * bx + ay * by) / (lenA * lenB);
       const indexUp = lenA >= L_INDEX_MIN_LEN && ay < 0;
       const thumbOut = lenB >= L_THUMB_MIN_LEN;
-      const isLShape = indexUp && thumbOut && Math.abs(cosAngle) <= L_PERPENDICULAR_MAX;
+      // middle(9→12), ring(13→16), pinky(17→20) must be curled (tip close to MCP)
+      const tipDist = (mcp, tip) => Math.hypot(tip.x - mcp.x, tip.y - mcp.y);
+      const middleDist = tipDist(landmarks[9], landmarks[12]);
+      const ringDist = tipDist(landmarks[13], landmarks[16]);
+      const pinkyDist = tipDist(landmarks[17], landmarks[20]);
+      const curledThreshold = Math.max(L_OTHER_FINGERS_MAX_LEN, lenA * L_OTHER_VS_INDEX_RATIO);
+      const middleCurled = middleDist <= curledThreshold;
+      const ringCurled = ringDist <= curledThreshold;
+      const pinkyCurled = pinkyDist <= curledThreshold;
+      const othersCurled = middleCurled && ringCurled && pinkyCurled;
+      const isLShape = indexUp && thumbOut && othersCurled && Math.abs(cosAngle) <= L_PERPENDICULAR_MAX;
       const wasLShape = wasLShapeRef.current;
+      // #region agent log
+      const heldMs = lShapeFirstSeenRef.current != null ? now - lShapeFirstSeenRef.current : 0;
+      if (isLShape && heldMs % 250 < 50) fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CameraMirror.jsx:Lshape',message:'L-shape hold',data:{isLShape,indexUp,thumbOut,othersCurled,cosAngleAbs:Math.abs(cosAngle),lenA,lenB,heldMs,lShapeHoldTriggered:lShapeHoldTriggeredRef.current,onPinchExists:!!onPinchStart},timestamp:Date.now(),hypothesisId:'H1_H4_H5'})}).catch(()=>{});
+      if (!isLShape && indexUp && thumbOut && (now - lastLShapeFailLogRef.current) > 800) { lastLShapeFailLogRef.current = now; fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CameraMirror.jsx:LshapeFail',message:'index+thumb out but not full L-shape',data:{othersCurled,cosAngleAbs:Math.abs(cosAngle),lenA,lenB,middleDist,ringDist,pinkyDist,maxOther:Math.max(middleDist,ringDist,pinkyDist)},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{}); }
+      // #endregion
 
       if (!isLShape) {
         lShapeFirstSeenRef.current = null;
@@ -121,6 +149,9 @@ export function CameraMirror({ onWaveLeft, onWaveRight, onScrollUp, onScrollDown
           lShapeHoldTriggeredRef.current = true;
           wasLShapeRef.current = true;
           clearScrollInterval();
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CameraMirror.jsx:onPinchStartCall',message:'calling onPinchStart',data:{heldMs},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
+          // #endregion
           onPinchStart?.();
           fetch(`${API}/gestures`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'lshape_start', value: 'voice_qa' }) }).catch(() => {});
         } else if (lShapeHoldTriggeredRef.current) {
@@ -136,45 +167,104 @@ export function CameraMirror({ onWaveLeft, onWaveRight, onScrollUp, onScrollDown
     const openPalm = gestures?.find((g) => g.categoryName === 'Open_Palm' && g.score >= GESTURE_MIN_SCORE);
 
     if (openPalm) {
+      fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CameraMirror:openPalm',message:'calling onScrollHoldStop',timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
       clearScrollInterval();
+      onScrollHoldStop?.();
+      scrollDirectionRef.current = null;
     } else if (pointingUp && scrollDirectionRef.current !== 'up') {
+      const inDown = scrollDirectionRef.current === 'down';
+      if (inDown && scrollTarget === 'files') {
+        const opp = lastOppositeGestureSeenRef.current;
+        if (opp == null) { lastOppositeGestureSeenRef.current = now; return; }  // first opposite frame
+        if (now - opp < SCROLL_DIR_SWITCH_MS) return;  // debounce
+        lastOppositeGestureSeenRef.current = null;
+      }
       clearScrollInterval();
       scrollDirectionRef.current = 'up';
+      lastScrollGestureSeenRef.current = now;
+      fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CameraMirror:intervalStart',message:'scroll-up interval',data:{},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CameraMirror.jsx:pointingUp',message:'1-finger scroll triggered',data:{onScrollUpExists:!!onScrollUp},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
-      // #endregion
-      onScrollUp?.();
-      scrollIntervalRef.current = setInterval(() => onScrollUp?.(), SCROLL_HOLD_INTERVAL_MS);
+      if (scrollTarget === 'files') {
+        fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CameraMirror:onScrollHoldStart',message:'invoking up',data:{scrollTarget},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+        onScrollHoldStart?.('up');
+      } else {
+        onScrollUp?.();
+        scrollIntervalRef.current = setInterval(() => onScrollUp?.(), SCROLL_HOLD_INTERVAL_MS);
+      }
       fetch(`${API}/gestures`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'point_up', value: 'scroll_up' }) }).catch(() => {});
       return;
     } else if (victory && scrollDirectionRef.current !== 'down') {
+      const inUp = scrollDirectionRef.current === 'up';
+      if (inUp && scrollTarget === 'files') {
+        const opp = lastOppositeGestureSeenRef.current;
+        if (opp == null) { lastOppositeGestureSeenRef.current = now; return; }  // first opposite frame
+        if (now - opp < SCROLL_DIR_SWITCH_MS) return;  // debounce
+        lastOppositeGestureSeenRef.current = null;
+      }
       clearScrollInterval();
       scrollDirectionRef.current = 'down';
+      lastScrollGestureSeenRef.current = now;
+      fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CameraMirror:intervalStart',message:'scroll-down interval',data:{},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CameraMirror.jsx:victory',message:'2-finger scroll triggered',data:{onScrollDownExists:!!onScrollDown},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
-      // #endregion
-      onScrollDown?.();
-      scrollIntervalRef.current = setInterval(() => onScrollDown?.(), SCROLL_HOLD_INTERVAL_MS);
+      if (scrollTarget === 'files') {
+        fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CameraMirror:onScrollHoldStart',message:'invoking down',data:{scrollTarget},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+        onScrollHoldStart?.('down');
+      } else {
+        onScrollDown?.();
+        scrollIntervalRef.current = setInterval(() => onScrollDown?.(), SCROLL_HOLD_INTERVAL_MS);
+      }
       fetch(`${API}/gestures`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'victory', value: 'scroll_down' }) }).catch(() => {});
       return;
     } else if (!pointingUp && !victory) {
-      clearScrollInterval();
+      lastOppositeGestureSeenRef.current = null;  // reset opposite-gesture debounce
+      const graceMs = scrollTarget === 'files' ? 800 : SCROLL_GRACE_MS;  // longer grace when browsing files
+      const hadScroll = scrollIntervalRef.current || (scrollTarget === 'files' && scrollDirectionRef.current);
+      const graceExceeded = hadScroll && (now - lastScrollGestureSeenRef.current) > graceMs;
+      if (graceExceeded) {
+        fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CameraMirror:graceExceeded',message:'calling onScrollHoldStop',data:{scrollDir:scrollDirectionRef.current},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
+        clearScrollInterval();
+        onScrollHoldStop?.();
+        scrollDirectionRef.current = null;
+      }
     }
-    if (pointingUp || victory) return;
+    if (pointingUp || victory) {
+      lastScrollGestureSeenRef.current = now;
+      if (scrollTarget === 'files') {
+        const sameDir = (pointingUp && scrollDirectionRef.current === 'up') || (victory && scrollDirectionRef.current === 'down');
+        if (sameDir) lastOppositeGestureSeenRef.current = null;
+      }
+      return;
+    }
 
     // 3 fingers (ILoveYou) = switch scroll target; 2s cooldown between triggers
     const iLoveYou = gestures?.find((g) => g.categoryName === 'ILoveYou' && g.score >= GESTURE_MIN_SCORE);
     if (iLoveYou && now - lastThreeFingerTimeRef.current > THREE_FINGER_COOLDOWN_MS) {
       lastThreeFingerTimeRef.current = now;
       clearScrollInterval();
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CameraMirror.jsx:iLoveYou',message:'3-finger switch triggered',data:{onSwitchExists:!!onSwitchScrollTarget},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
-      // #endregion
+      onScrollHoldStop?.();
+      scrollDirectionRef.current = null;
       onSwitchScrollTarget?.();
       fetch(`${API}/gestures`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'three_fingers', value: 'switch_scroll_target' }) }).catch(() => {});
       return;
     }
     if (iLoveYou) return;  // still showing 3 fingers but cooldown active—skip wave
+
+    // Thumb_Up = confirm selection when browsing patient files (App checks scrollTarget === 'files')
+    const thumbUp = gestures?.find((g) => g.categoryName === 'Thumb_Up' && g.score >= GESTURE_MIN_SCORE);
+    if (thumbUp && scrollTarget === 'files' && (scrollIntervalRef.current || scrollDirectionRef.current)) {
+      lastScrollGestureSeenRef.current = now;  // treat as "hand there" during scroll—avoid clear from misclassification
+      return;
+    }
+    if (thumbUp && onThumbsUp && now - lastThumbsUpTimeRef.current > THUMB_UP_COOLDOWN_MS) {
+      lastThumbsUpTimeRef.current = now;
+      clearScrollInterval();
+      onScrollHoldStop?.();
+      scrollDirectionRef.current = null;
+      onThumbsUp();
+      fetch(`${API}/gestures`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'thumb_up', value: 'confirm_selection' }) }).catch(() => {});
+      return;
+    }
+    if (thumbUp) return;
 
     // Wave left/right for file navigation (needs position history)
     if (lastHandXRef.current === null) {
@@ -199,7 +289,7 @@ export function CameraMirror({ onWaveLeft, onWaveRight, onScrollUp, onScrollDown
         fetch(`${API}/gestures`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'swipe_right', value: 'hand_wave' }) }).catch(() => {});
       }
     }
-  }, [onWaveLeft, onWaveRight, onScrollUp, onScrollDown, onSwitchScrollTarget, onPlayAudio, onUserGesture, onPinchStart, onPinchStop, clearScrollInterval]);
+  }, [onWaveLeft, onWaveRight, onScrollUp, onScrollDown, onScrollHoldStart, onScrollHoldStop, onSwitchScrollTarget, onThumbsUp, onPlayAudio, onUserGesture, onPinchStart, onPinchStop, clearScrollInterval, scrollTarget]);
 
   useEffect(() => {
     let failCount = 0;
@@ -245,6 +335,9 @@ export function CameraMirror({ onWaveLeft, onWaveRight, onScrollUp, onScrollDown
           wasLShapeRef.current = false;
           lShapeFirstSeenRef.current = null;
           lShapeHoldTriggeredRef.current = false;
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CameraMirror.jsx:handLost',message:'hand lost, reset L-shape',data:{},timestamp:Date.now(),hypothesisId:'H4'})}).catch(()=>{});
+          // #endregion
           const stop = typeof onPinchStop === 'function' ? onPinchStop : null;
           if (stop) stop();
         }
@@ -326,8 +419,9 @@ export function CameraMirror({ onWaveLeft, onWaveRight, onScrollUp, onScrollDown
           <span>✌️</span> <span className="camera-instructions-label">2 fingers = scroll down</span>
         </div>
         <div className="camera-instructions-row">
-          <span>🤟</span> <span className="camera-instructions-label">3 fingers = switch (2s cooldown)</span>
+          <span>🤟</span> <span className="camera-instructions-label">3 fingers = confirm patient (2s cooldown)</span>
         </div>
+        <p className="camera-instructions-note camera-instructions-tip">While scrolling patients, gestures are faster than swiping. If you want to pause patient scrolling, use this symbol to confirm.</p>
         <div className="camera-instructions-row">
           <span>🖐️</span> <span className="camera-instructions-label">open palm = stop</span>
         </div>

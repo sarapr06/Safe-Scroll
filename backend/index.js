@@ -89,7 +89,7 @@ async function main() {
     }
     throw err;
   });
-  server.listen(port, () => {
+  server.listen(port, '0.0.0.0', () => {
     console.log(`Safe-Scroll backend running on http://localhost:${port}`);
     console.log(`Gemini: ${GEMINI_MODEL} (first of fallback list)`);
   });
@@ -97,7 +97,17 @@ async function main() {
     await connectDb();
     await seedPatientFmrinii();
   } catch (err) {
+    const hint =
+      !process.env.MONGODB_URI
+        ? 'Set MONGODB_URI in backend/.env (see .env.example).'
+        : /Server selection timed out/i.test(err.message)
+          ? 'Connection timed out: check Atlas Network Access (allow your IP or 0.0.0.0/0), cluster not paused, and valid credentials.'
+          : null;
     console.warn('MongoDB not connected (files/summarize will fail):', err.message);
+    if (hint) console.warn('Hint:', hint);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.js:connectDbCatch',message:'MongoDB connect error detail',data:{msg:err.message,code:err.code,causeMsg:err.cause?.message,causeCode:err.cause?.code},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+    // #endregion
   }
 }
 

@@ -1,9 +1,9 @@
 export function SummaryPanel({ summary, loading, patientName, isPlayingAudio, onPlayAudioClick }) {
   const AudioStatusBar = () => (
     <div className={`summary-audio-status ${isPlayingAudio ? 'summary-audio-status--active' : ''}`}>
-      <span>{isPlayingAudio ? '🔊 Reading aloud' : 'Closed fist to hear'}</span>
+      <span>{isPlayingAudio ? '🔊 Reading aloud' : 'Click Play (required for audio) or closed fist'}</span>
       {onPlayAudioClick && (
-        <button type="button" className="summary-play-btn" onClick={onPlayAudioClick} aria-label="Play audio (test)">
+        <button type="button" className="summary-play-btn" onClick={onPlayAudioClick} aria-label="Play summary aloud">
           🔊 Play
         </button>
       )}

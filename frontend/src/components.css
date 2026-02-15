@@ -751,7 +751,27 @@
   color: rgba(255, 255, 255, 0.85);
   margin-bottom: 0.5rem;
 }
+.voice-qa-answer-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
 .voice-qa-answer {
   font-size: 0.9rem;
   line-height: 1.4;
 }
+.voice-qa-hear-btn {
+  align-self: flex-start;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  background: var(--valentine-rose);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.voice-qa-hear-btn:hover {
+  opacity: 0.92;
+}
+

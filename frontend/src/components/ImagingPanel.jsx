@@ -10,7 +10,7 @@ import { NiftiViewer } from './NiftiViewer.jsx';
 export function ImagingPanel({ patientId, imaging = null, loading = false, demoImaging = null }) {
   if (!patientId) return null;
 
-  const studies = imaging ?? demoImaging ?? [];
+  const studies = (imaging?.length ? imaging : null) ?? demoImaging ?? [];
   const hasStudies = Array.isArray(studies) && studies.length > 0;
 
   if (loading) {

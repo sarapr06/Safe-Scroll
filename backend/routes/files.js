@@ -1,9 +1,10 @@
 import { Router } from 'express';
-import { getCollection } from '../db.js';
+import { getCollection, isDbConnected } from '../db.js';
 
 export const filesRouter = Router();
 
 filesRouter.get('/', async (req, res) => {
+  if (!isDbConnected()) return res.json([]);
   try {
     const col = getCollection('patient_files');
     const files = await col.find({}).sort({ updatedAt: -1 }).limit(50).toArray();
@@ -14,6 +15,7 @@ filesRouter.get('/', async (req, res) => {
 });
 
 filesRouter.get('/:id', async (req, res) => {
+  if (!isDbConnected()) return res.status(404).json({ error: 'Not found' });
   try {
     const { ObjectId } = await import('mongodb');
     const col = getCollection('patient_files');

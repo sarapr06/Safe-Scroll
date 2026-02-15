@@ -124,6 +124,9 @@ ${content}
   function fallbackError(error) {
     const msg = error.message || String(error);
     console.error('[Gemini] Raw error:', msg);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'gemini.js:fallbackError',message:'Gemini raw error detail',data:{msg,causeMsg:error.cause?.message,causeCode:error.cause?.code,code:error.code},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+    // #endregion
     let userMsg = 'Error processing file. Please try again.';
     if (msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota') || msg.includes('limit: 0')) {
       userMsg = 'AI request limit reached. Wait a moment and try again, or enable billing at ai.google.dev for higher limits.';
@@ -192,39 +195,78 @@ ${blocks}`;
     return JSON.parse(str.slice(start, end + 1));
   }
 
-  try {
-    const rawText = await callGeminiREST(GEMINI_MODEL, prompt);
-    const arr = parseBatchResponse(rawText);
-    const arrLen = Array.isArray(arr) ? arr.length : 0;
-    const result = {};
-    files.forEach((f, i) => {
-      const item = Array.isArray(arr) && arr[i] ? arr[i] : null;
-      const id = String(f.id);
-      result[id] = item && typeof item === 'object'
-        ? { summary: item, ...item }
-        : { error: 'No summary returned', keyFindings: [], abnormalVitals: [], coreMetrics: {}, verbalSummary: '' };
-      // #region agent log
-      const vb = item?.verbalSummary ?? '';
-      fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'gemini.js:batchItem',message:'batch item',data:{idx:i,id,arrLen,hasItem:!!item,hasError:!!result[id]?.error,vbLen:vb?.length??0,vbSnippet:String(vb).slice(0,100)},timestamp:Date.now(),hypothesisId:'H6_H7'})}).catch(()=>{});
-      // #endregion
-    });
-    return result;
-  } catch (e) {
-    console.error('[Gemini] Batch error:', e.message);
-    const errMsg = e.message?.slice(0, 150) || 'Batch summarize failed';
-    const fallback = {};
-    files.forEach((f) => {
-      const id = String(f.id);
-      fallback[id] = {
-        error: errMsg,
-        keyFindings: [],
-        abnormalVitals: [],
-        coreMetrics: {},
-        verbalSummary: errMsg,
-      };
-    });
-    return fallback;
+  for (const model of MODELS) {
+    try {
+      const rawText = await callGeminiREST(model, prompt);
+      const arr = parseBatchResponse(rawText);
+      if (model !== GEMINI_MODEL) console.log(`[Gemini] Batch used fallback model: ${model}`);
+      const arrLen = Array.isArray(arr) ? arr.length : 0;
+      const result = {};
+      files.forEach((f, i) => {
+        const item = Array.isArray(arr) && arr[i] ? arr[i] : null;
+        const id = String(f.id);
+        result[id] = item && typeof item === 'object'
+          ? { summary: item, ...item }
+          : { error: 'No summary returned', keyFindings: [], abnormalVitals: [], coreMetrics: {}, verbalSummary: '' };
+        // #region agent log
+        const vb = item?.verbalSummary ?? '';
+        fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'gemini.js:batchItem',message:'batch item',data:{idx:i,id,arrLen,hasItem:!!item,hasError:!!result[id]?.error,vbLen:vb?.length??0,vbSnippet:String(vb).slice(0,100)},timestamp:Date.now(),hypothesisId:'H6_H7'})}).catch(()=>{});
+        // #endregion
+      });
+      return result;
+    } catch (e) {
+      const msg = e.message || String(e);
+      const isQuota = msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota');
+      const isNotFound = msg.includes('404') || msg.toLowerCase().includes('not found');
+      const isLast = model === MODELS[MODELS.length - 1];
+      if (isNotFound && !isLast) {
+        console.warn(`[Gemini] Batch: ${model} not available, trying next...`);
+        continue;
+      }
+      if (isQuota && !isLast) {
+        console.warn(`[Gemini] Batch: ${model} quota exceeded, trying next...`);
+        continue;
+      }
+      const retryMatch = msg.match(/retry in (\d+(?:\.\d+)?)s/);
+      if (isQuota && retryMatch && !isLast) {
+        const waitSec = Math.ceil(parseFloat(retryMatch[1])) + 2;
+        console.warn(`[Gemini] Batch: Quota exceeded. Retrying in ${waitSec}s...`);
+        await new Promise((r) => setTimeout(r, waitSec * 1000));
+        try {
+          const rawText = await callGeminiREST(model, prompt);
+          const arr = parseBatchResponse(rawText);
+          const result = {};
+          files.forEach((f, i) => {
+            const item = Array.isArray(arr) && arr[i] ? arr[i] : null;
+            const id = String(f.id);
+            result[id] = item && typeof item === 'object'
+              ? { summary: item, ...item }
+              : { error: 'No summary returned', keyFindings: [], abnormalVitals: [], coreMetrics: {}, verbalSummary: '' };
+          });
+          return result;
+        } catch (retryErr) {
+          console.error('[Gemini] Batch retry failed:', retryErr.message);
+          if (model === MODELS[MODELS.length - 1]) break;
+          continue;
+        }
+      }
+      console.error('[Gemini] Batch error:', e.message);
+      if (!isLast) continue;
+    }
   }
+  const errMsg = 'AI quota exceeded. Wait a minute and refresh, or enable billing at ai.google.dev.';
+  const fallback = {};
+  files.forEach((f) => {
+    const id = String(f.id);
+    fallback[id] = {
+      error: errMsg,
+      keyFindings: [],
+      abnormalVitals: [],
+      coreMetrics: {},
+      verbalSummary: errMsg,
+    };
+  });
+  return fallback;
 }
 
 /**

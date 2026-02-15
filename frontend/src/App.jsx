@@ -16,6 +16,42 @@ import { ENABLE_VOICE_QA } from './featureFlags.js';
 const API = '/api';
 const VOICE_QA_RECORD_MAX_MS = 60000;  // 60s max safety if release not detected
 
+function speakText(text, onEnd) {
+  // #region agent log
+  const hasSS = typeof speechSynthesis !== 'undefined';
+  const hasSpeak = hasSS && typeof speechSynthesis?.speak === 'function';
+  const hasText = !!text && String(text).trim().length > 0;
+  const voices = hasSS ? speechSynthesis.getVoices() : [];
+  fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:speakText:entry',message:'speakText called',data:{hasSS,hasSpeak,hasText,textLen:String(text||'').length,voicesCount:voices.length,isSecure:typeof location!=='undefined'&&location.protocol==='https:',bailEarly:!hasSS||!hasSpeak||!hasText},timestamp:Date.now(),hypothesisId:'H3_H4_H5'})}).catch(()=>{});
+  // #endregion
+  if (typeof speechSynthesis === 'undefined' || !speechSynthesis.speak || !text) {
+    if (typeof onEnd === 'function') onEnd();
+    return;
+  }
+  speechSynthesis.cancel();
+  if (typeof speechSynthesis.resume === 'function') speechSynthesis.resume();
+  const u = new SpeechSynthesisUtterance(text);
+  u.rate = 0.95;
+  u.lang = 'en-US';
+  const voicesList = speechSynthesis.getVoices();
+  // Chrome's Google voices don't fire onstart/onend; native (localService) voices do. Force local.
+  const localVoice =
+    voicesList.find((v) => v.localService && v.lang.startsWith('en')) ||
+    voicesList.find((v) => v.localService);
+  if (localVoice) u.voice = localVoice;
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:speakText:voiceSelected',message:'voice choice',data:{hasLocalVoice:!!localVoice,voiceName:localVoice?.name,localService:localVoice?.localService},timestamp:Date.now(),hypothesisId:'H5',runId:'post-fix'})}).catch(()=>{});
+  // #endregion
+  if (typeof onEnd === 'function') u.onend = onEnd;
+  // #region agent log
+  u.onstart = () => { fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:speakText:onstart',message:'utterance started',data:{},timestamp:Date.now(),hypothesisId:'H4_H5'})}).catch(()=>{}); };
+  // #endregion
+  speechSynthesis.speak(u);
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:speakText:afterSpeak',message:'speechSynthesis.speak invoked',data:{},timestamp:Date.now(),hypothesisId:'H4'})}).catch(()=>{});
+  // #endregion
+}
+
 export default function App() {
   const [files, setFiles] = useState([]);
   const [filesLoading, setFilesLoading] = useState(true);
@@ -36,43 +72,99 @@ export default function App() {
   const [voiceQaLiveTranscript, setVoiceQaLiveTranscript] = useState(''); // live during recording
   const [voiceQaAnswer, setVoiceQaAnswer] = useState('');
 
+  const currentIndexRef = useRef(currentIndex);
+  const filesRef = useRef(files);
+  const voicesReadyRef = useRef(false);
+  currentIndexRef.current = currentIndex;
+  filesRef.current = files;
+
+  useEffect(() => {
+    if (typeof speechSynthesis === 'undefined') return;
+    const loadVoices = () => { speechSynthesis.getVoices(); voicesReadyRef.current = true; };
+    if (speechSynthesis.getVoices().length > 0) voicesReadyRef.current = true;
+    else speechSynthesis.addEventListener('voiceschanged', loadVoices);
+    return () => speechSynthesis.removeEventListener('voiceschanged', loadVoices);
+  }, []);
+
   const goPrev = useCallback(() => {
-    if (files.length === 0) return;
-    const i = currentIndex <= 0 ? files.length - 1 : currentIndex - 1;
+    const fl = filesRef.current;
+    const idx = currentIndexRef.current;
+    if (fl.length === 0) return;
+    const i = idx <= 0 ? fl.length - 1 : idx - 1;
     setCurrentIndex(i);
-    setCurrentFile(files[i]);
-  }, [files, currentIndex]);
+    setCurrentFile(fl[i]);
+  }, []);
 
   const goNext = useCallback(() => {
-    if (files.length === 0) return;
-    const i = currentIndex < 0 || currentIndex >= files.length - 1 ? 0 : currentIndex + 1;
+    const fl = filesRef.current;
+    const idx = currentIndexRef.current;
+    if (fl.length === 0) return;
+    const i = idx < 0 || idx >= fl.length - 1 ? 0 : idx + 1;
     setCurrentIndex(i);
-    setCurrentFile(files[i]);
-  }, [files, currentIndex]);
+    setCurrentFile(fl[i]);
+  }, []);
 
   const contentScrollRef = useRef(null);
   const summaryScrollRef = useRef(null);
-  const [scrollTarget, setScrollTarget] = useState('patient'); // 'patient' | 'summary'
-  const scrollUp = useCallback(() => {
-    const el = scrollTarget === 'patient' ? contentScrollRef.current : summaryScrollRef.current;
+  const filesScrollIntervalRef = useRef(null);
+  const FILE_NAV_INTERVAL_MS = 1000; // 1s per patient when holding 1/2 finger in files mode
+  const [scrollTarget, setScrollTarget] = useState('patient'); // 'patient' | 'summary' | 'files'
+
+  const stopFilesScroll = useCallback(() => {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:scrollUp',message:'scrollUp invoked',data:{scrollTarget,elNull:!el,scrollHeight:el?.scrollHeight,clientHeight:el?.clientHeight,canScroll:el?el.scrollHeight>el.clientHeight:null},timestamp:Date.now(),hypothesisId:'H1_H4'})}).catch(()=>{});
+    if (filesScrollIntervalRef.current) {
+      fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App:stopFilesScroll',message:'clearing interval',timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
+    }
     // #endregion
+    if (filesScrollIntervalRef.current) {
+      clearInterval(filesScrollIntervalRef.current);
+      filesScrollIntervalRef.current = null;
+    }
+  }, []);
+
+  const handleScrollHoldStart = useCallback((dir) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App:handleScrollHoldStart',message:'called',data:{dir,scrollTarget,filesLen:files.length},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
+    // #endregion
+    if (scrollTarget !== 'files') return;
+    stopFilesScroll();
+    if (dir === 'up') {
+      goPrev();
+      filesScrollIntervalRef.current = setInterval(goPrev, FILE_NAV_INTERVAL_MS);
+      fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App:intervalStarted',message:'up',timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
+    } else {
+      goNext();
+      filesScrollIntervalRef.current = setInterval(goNext, FILE_NAV_INTERVAL_MS);
+      fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App:intervalStarted',message:'down',timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
+    }
+  }, [scrollTarget, goPrev, goNext, stopFilesScroll]);
+
+  const handleScrollHoldStop = useCallback(() => {
+    stopFilesScroll();
+  }, [stopFilesScroll]);
+  const scrollUp = useCallback(() => {
+    if (scrollTarget === 'files') return; // handled by handleScrollHoldStart
+    const el = scrollTarget === 'patient' ? contentScrollRef.current : summaryScrollRef.current;
     el?.scrollBy({ top: -SCROLL_AMOUNT, behavior: 'smooth' });
   }, [scrollTarget]);
   const scrollDown = useCallback(() => {
+    if (scrollTarget === 'files') return; // handled by handleScrollHoldStart
     const el = scrollTarget === 'patient' ? contentScrollRef.current : summaryScrollRef.current;
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:scrollDown',message:'scrollDown invoked',data:{scrollTarget,elNull:!el,scrollHeight:el?.scrollHeight,clientHeight:el?.clientHeight,canScroll:el?el.scrollHeight>el.clientHeight:null},timestamp:Date.now(),hypothesisId:'H2_H4'})}).catch(()=>{});
-    // #endregion
     el?.scrollBy({ top: SCROLL_AMOUNT, behavior: 'smooth' });
   }, [scrollTarget]);
   const handleSwitchScrollTarget = useCallback(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handleSwitchScrollTarget',message:'switch invoked',data:{},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
-    // #endregion
-    setScrollTarget((prev) => (prev === 'patient' ? 'summary' : 'patient'));
-  }, []);
+    stopFilesScroll();
+    setScrollTarget((prev) => {
+      if (prev === 'patient') return 'summary';
+      if (prev === 'summary') return 'files';
+      return 'patient';
+    });
+  }, [stopFilesScroll]);
+
+  const handleThumbsUp = useCallback(() => {
+    stopFilesScroll();
+    setScrollTarget((prev) => (prev === 'files' ? 'patient' : prev));
+  }, [stopFilesScroll]);
 
   useEffect(() => {
     if (files.length && currentFile) {
@@ -89,18 +181,12 @@ export default function App() {
     id ? String(id).replace(/^MR/i, 'M R ') : ''
   , []);
   useEffect(() => {
-    if (!currentFile || typeof speechSynthesis === 'undefined' || !speechSynthesis.speak) return;
+    if (!currentFile) return;
     const name = getPatientName(currentFile);
     const id = currentFile.patientId ? getSpeakableId(currentFile.patientId) : '';
     const text = id ? `${name}, ID ${id}` : name;
     if (!text.trim()) return;
-    speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.rate = 0.95;
-    u.lang = 'en-US';
-    const voices = speechSynthesis.getVoices();
-    if (voices?.length > 0) u.voice = voices[0];
-    speechSynthesis.speak(u);
+    speakText(text);
   }, [currentFile, getPatientName, getSpeakableId]);
 
   const initialLoadDone = useRef(false);
@@ -386,7 +472,22 @@ export default function App() {
   const currentFileRef = useRef(currentFile);
   currentFileRef.current = currentFile;
 
+  const stopAllAudio = useCallback(() => {
+    if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
+    const audio = audioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.currentTime = 0;
+      audio.src = '';
+    }
+    setIsPlayingAudio(false);
+  }, []);
+
   const handlePlayAudio = useCallback(async () => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handlePlayAudio:entry',message:'handlePlayAudio called',data:{loading,hasSummary:!!summary},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+    // #endregion
+    if (isPlayingAudio) return; // avoid double-trigger (fist/click firing twice)
     const s = summary?.summary || summary;
     const toRead =
       s?.verbalSummary ||
@@ -401,98 +502,69 @@ export default function App() {
         : !summary ? 'AI summary loading…'
         : 'Wait for the summary to load, then close your fist.';
     const text = (toRead || msg).replace(/AI unavailable/gi, 'loading');
-    const fileId = currentFile?._id;
-    let audioBase64 = summary?.audioBase64 ?? (fileId ? audioCache[fileId] : null);
-    if (!audioBase64 && text && fileId) {
-      try {
-        const res = await fetch(`${API}/summarize/audio`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text }),
-        });
-        const data = await res.json();
-        if (data.audioBase64) {
-          setAudioCache((prev) => ({ ...prev, [fileId]: data.audioBase64 }));
-          audioBase64 = data.audioBase64;
-        }
-      } catch {}
-    }
-    if (audioBase64 && text) {
-      try {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handlePlayAudio:beforeSpeak',message:'text derived',data:{hasToRead:!!toRead,hasText:!!text,textLen:String(text||'').length,msgSnippet:String(msg||'').slice(0,50)},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
+    // #endregion
+    if (!text) return;
+    setIsPlayingAudio(true);
+    stopAllAudio();
+    try {
+      const res = await fetch(`${API}/summarize/audio`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text.slice(0, 2500) }),
+      });
+      const data = await res.json().catch(() => ({}));
+      const audioBase64 = data?.audioBase64;
+      if (audioBase64) {
         if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
         const binary = atob(audioBase64);
         const bytes = new Uint8Array(binary.length);
         for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-        const blob = new Blob([bytes], { type: 'audio/mpeg' });
-        const url = URL.createObjectURL(blob);
+        const audioBlob = new Blob([bytes], { type: 'audio/mpeg' });
+        const url = URL.createObjectURL(audioBlob);
         blobUrlRef.current = url;
         const audio = audioRef.current || new Audio();
         if (!audioRef.current) audioRef.current = audio;
         audio.src = url;
         audio.onended = () => {
-          if (blobUrlRef.current) { URL.revokeObjectURL(blobUrlRef.current); blobUrlRef.current = null; }
+          if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
+          blobUrlRef.current = null;
           setIsPlayingAudio(false);
         };
-        setIsPlayingAudio(true);
-        audio.play().catch(() => {
-          if (blobUrlRef.current) { URL.revokeObjectURL(blobUrlRef.current); blobUrlRef.current = null; }
-          setIsPlayingAudio(false);
-          if (text && speechSynthesis?.speak) {
-            speechSynthesis.cancel();
-            const u = new SpeechSynthesisUtterance(text);
-            u.rate = 0.95;
-            u.lang = 'en-US';
-            const voices = speechSynthesis.getVoices();
-            if (voices?.length > 0) u.voice = voices[0];
-            u.onend = () => setIsPlayingAudio(false);
-            speechSynthesis.speak(u);
-          }
-        });
-      } catch (e) {
-        if (text && speechSynthesis?.speak) {
-          speechSynthesis.cancel();
-          setIsPlayingAudio(true);
-          const u = new SpeechSynthesisUtterance(text);
-          u.rate = 0.95;
-          u.lang = 'en-US';
-          const voices = speechSynthesis.getVoices();
-          if (voices?.length > 0) u.voice = voices[0];
-          u.onend = () => setIsPlayingAudio(false);
-          speechSynthesis.speak(u);
-        }
+        await audio.play();
+        return;
       }
-      return;
+    } catch {
+      /* ElevenLabs failed or audio.play() rejected; clear any partial setup before fallback */
+      const audio = audioRef.current;
+      if (audio) {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.src = '';
+      }
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = null;
+      }
     }
-    if (text && typeof speechSynthesis !== 'undefined' && speechSynthesis.speak) {
-      speechSynthesis.cancel();
-      setIsPlayingAudio(true);
-      const u = new SpeechSynthesisUtterance(text);
-      u.rate = 0.95;
-      u.lang = 'en-US';
-      const voices = speechSynthesis.getVoices();
-      if (voices?.length > 0) u.voice = voices[0];
-      u.onend = () => setIsPlayingAudio(false);
-      speechSynthesis.speak(u);
-    }
-  }, [summary, loading, currentFile?._id, audioCache]);
-
-  const stopAllAudio = useCallback(() => {
-    if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
-    const audio = audioRef.current;
-    if (audio) {
-      audio.pause();
-      audio.currentTime = 0;
-      audio.src = '';
-    }
-    setIsPlayingAudio(false);
-  }, []);
+    speakText(text, () => setIsPlayingAudio(false));
+  }, [summary, loading, stopAllAudio, isPlayingAudio]);
 
   const voiceQaStopResolveRef = useRef(null);
 
   const handlePinchStart = useCallback(async () => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handlePinchStart',message:'handlePinchStart entered',data:{voiceQaPhase,ENABLE_VOICE_QA},timestamp:Date.now(),hypothesisId:'H2_H3'})}).catch(()=>{});
+    // #endregion
     if (!ENABLE_VOICE_QA) return;
     stopAllAudio();
-    if (voiceQaPhase !== 'idle' && voiceQaPhase !== 'speaking') return;
+    if (voiceQaPhase !== 'idle' && voiceQaPhase !== 'speaking') {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:handlePinchStartEarlyReturn',message:'early return: voiceQaPhase not idle/speaking',data:{voiceQaPhase},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
+      // #endregion
+      return;
+    }
     setVoiceQaQuestion('');
     setVoiceQaAnswer('');
     setVoiceQaLiveTranscript('');
@@ -541,6 +613,7 @@ export default function App() {
       if (recorder.state === 'recording') recorder.stop();
       await recStopped;
       if (recognition) try { recognition.stop(); } catch {}
+      await new Promise((r) => setTimeout(r, 400));
     } catch (e) {
       setVoiceQaAnswer(`Microphone error: ${e.message || 'Permission denied?'}`);
       setVoiceQaPhase('idle');
@@ -571,12 +644,14 @@ export default function App() {
         const trData = await trRes.json().catch(() => ({}));
         transcript = (trData.text || trData.transcript || '').trim();
         if (!trRes.ok) {
-          setVoiceQaAnswer(`Transcription failed: ${trData.error || trRes.status}`);
+          const err = trData.error || trRes.status;
+          setVoiceQaAnswer(`Transcription failed: ${err}. Tip: Use Chrome for built-in speech recognition, or check your network.`);
           setVoiceQaPhase('idle');
           return;
         }
       } catch (e) {
-        setVoiceQaAnswer(`Transcription failed: ${e.message || 'Unknown error'}`);
+        const msg = e.message || 'Unknown error';
+        setVoiceQaAnswer(`Transcription failed: ${msg}. Tip: Use Chrome for built-in speech recognition, or try a different network.`);
         setVoiceQaPhase('idle');
         return;
       }
@@ -620,15 +695,8 @@ export default function App() {
         // #region agent log
         if (fromFallback) fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:voiceQa-speakFallback',message:'audio.play failed, using speechSynthesis',data:{},timestamp:Date.now(),hypothesisId:'H5',runId:'post-fix'})}).catch(()=>{});
         // #endregion
-        if (typeof speechSynthesis !== 'undefined' && speechSynthesis.speak && answer) {
-          speechSynthesis.cancel();
-          const u = new SpeechSynthesisUtterance(answer);
-          u.rate = 0.95;
-          u.lang = 'en-US';
-          const voices = speechSynthesis.getVoices();
-          if (voices?.length > 0) u.voice = voices[0];
-          u.onend = () => setVoiceQaPhase('idle');
-          speechSynthesis.speak(u);
+        if (answer) {
+          speakText(answer, () => setVoiceQaPhase('idle'));
         } else {
           setVoiceQaPhase('idle');
         }
@@ -674,12 +742,8 @@ export default function App() {
   const handleUserGesture = useCallback(() => {
     if (typeof speechSynthesis === 'undefined') return;
     speechSynthesis.getVoices();
-    if (speechSynthesis.speak) {
-      const u = new SpeechSynthesisUtterance('Audio ready.');
-      u.rate = 1.2;
-      u.volume = 0.5;
-      speechSynthesis.speak(u);
-    }
+    // Use speakText (local voice + cancel/resume) so user gesture primes the engine correctly
+    if (speechSynthesis.speak) speakText('Audio ready.');
     const Ctx = window.AudioContext || window.webkitAudioContext;
     if (Ctx) {
       const ctx = new Ctx();
@@ -698,7 +762,11 @@ export default function App() {
       <header className="header">
         <h1>Safe-Scroll</h1>
         <span className="tagline">Touchless Patient Hub</span>
-        <div className="hearts" aria-hidden>♥ ♥ ♥</div>
+        <div className="hearts" aria-hidden>
+          <img src="/pixel-heart.gif" alt="" />
+          <img src="/pixel-heart.gif" alt="" />
+          <img src="/pixel-heart.gif" alt="" />
+        </div>
       </header>
 
       <main className="main">
@@ -708,19 +776,25 @@ export default function App() {
             onWaveRight={goNext}
             onScrollUp={scrollUp}
             onScrollDown={scrollDown}
+            onScrollHoldStart={handleScrollHoldStart}
+            onScrollHoldStop={handleScrollHoldStop}
             onSwitchScrollTarget={handleSwitchScrollTarget}
+            onThumbsUp={handleThumbsUp}
             onPlayAudio={handlePlayAudio}
             onUserGesture={handleUserGesture}
             onPinchStart={ENABLE_VOICE_QA ? handlePinchStart : undefined}
             onPinchStop={ENABLE_VOICE_QA ? handlePinchStop : undefined}
+            scrollTarget={scrollTarget}
           />
-          <FileList
-            files={files}
-            current={currentFile}
-            onSelect={handleSelectFile}
-            loading={filesLoading}
-            onRefresh={loadFiles}
-          />
+          <div className={`file-list-wrapper ${scrollTarget === 'files' ? 'file-list-wrapper--scroll-target' : ''}`}>
+            <FileList
+              files={files}
+              current={currentFile}
+              onSelect={handleSelectFile}
+              loading={filesLoading}
+              onRefresh={loadFiles}
+            />
+          </div>
         </aside>
 
         <section className={`content ${scrollTarget === 'patient' ? 'content--scroll-target' : ''}`}>
@@ -747,8 +821,14 @@ export default function App() {
       </main>
 
       <div className="scroll-target-indicator">
-        {scrollTarget === 'patient' ? '📄 Patient data' : '🤖 AI Summary'}
-        <span className="scroll-target-hint">3 fingers = switch (2s cooldown)</span>
+        {scrollTarget === 'patient' && '📄 Patient data'}
+        {scrollTarget === 'summary' && '🤖 AI Summary'}
+        {scrollTarget === 'files' && '📋 Patient files'}
+        <span className="scroll-target-hint">
+          {scrollTarget === 'files'
+            ? '1 finger=prev, 2 fingers=next, 👍 confirm'
+            : '3 fingers = switch (2s cooldown)'}
+        </span>
       </div>
       <GestureStatus gesture={lastGesture} />
       <MRISlicePopup visible={isFingerPresent} sliceIndex={mriSliceIndex} currentFile={currentFile} />
@@ -771,7 +851,11 @@ export default function App() {
               {voiceQaPhase === 'recording' ? (voiceQaLiveTranscript || '…') : voiceQaQuestion}
             </div>
           ) : null}
-          {voiceQaAnswer && <div className="voice-qa-answer">{voiceQaAnswer}</div>}
+          {voiceQaAnswer && (
+            <div className="voice-qa-answer-wrap">
+              <div className="voice-qa-answer">{voiceQaAnswer}</div>
+            </div>
+          )}
         </div>
       )}
     </div>
