@@ -323,7 +323,7 @@ export default function App() {
     let cancelled = false;
     let failCount = 0;
     const maxRetries = 5;
-    const FINGER_TIMEOUT_MS = 5000;
+    const FINGER_TIMEOUT_MS = 3000;
     const connect = () => {
       if (cancelled || failCount >= maxRetries) return;
       const url = `${API}/esp8266/stream`;
@@ -496,13 +496,6 @@ export default function App() {
 
       <main className="main">
         <aside className="sidebar">
-          <FileList
-            files={files}
-            current={currentFile}
-            onSelect={handleSelectFile}
-            loading={filesLoading}
-            onRefresh={loadFiles}
-          />
           <CameraMirror
             onWaveLeft={goPrev}
             onWaveRight={goNext}
@@ -511,6 +504,13 @@ export default function App() {
             onSwitchScrollTarget={handleSwitchScrollTarget}
             onPlayAudio={handlePlayAudio}
             onUserGesture={handleUserGesture}
+          />
+          <FileList
+            files={files}
+            current={currentFile}
+            onSelect={handleSelectFile}
+            loading={filesLoading}
+            onRefresh={loadFiles}
           />
         </aside>
 
@@ -542,7 +542,7 @@ export default function App() {
         <span className="scroll-target-hint">3 fingers = switch (2s cooldown)</span>
       </div>
       <GestureStatus gesture={lastGesture} />
-      <MRISlicePopup visible={isFingerPresent} sliceIndex={mriSliceIndex} />
+      <MRISlicePopup visible={isFingerPresent} sliceIndex={mriSliceIndex} currentFile={currentFile} />
     </div>
   );
 }

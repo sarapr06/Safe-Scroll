@@ -16,6 +16,7 @@ import { summarizeRouter } from './routes/summarize.js';
 import { presageRouter } from './routes/presage.js';
 import { fmriniiRouter } from './routes/fmrinii.js';
 import { connectDb } from './db.js';
+import { seedPatientFmrinii } from './scripts/seedPatientFmrinii.js';
 import { GEMINI_MODEL } from './services/gemini.js';
 
 const app = express();
@@ -92,6 +93,7 @@ async function main() {
   });
   try {
     await connectDb();
+    await seedPatientFmrinii();
   } catch (err) {
     console.warn('MongoDB not connected (files/summarize will fail):', err.message);
   }

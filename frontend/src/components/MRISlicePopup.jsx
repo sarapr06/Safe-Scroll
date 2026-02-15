@@ -3,15 +3,23 @@ import { useState, useEffect } from 'react';
 const API = '/api';
 
 /**
- * Fullscreen popup that shows MRI JPG slices from sample_data/fmrinii.
+ * Fullscreen popup that shows MRI JPG slices from sample_data/MRI/fmrinii*.
+ * Patients 1-6 -> fmrinii through fmrinii6. Patients 7+ show "No files for this patient yet."
  * Parent controls visibility (finger present) and index (from U/D scroll).
  */
-export function MRISlicePopup({ visible, sliceIndex }) {
+export function MRISlicePopup({ visible, sliceIndex, currentFile }) {
   const [slices, setSlices] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  const patientId = currentFile?.patientId;
+  const fileId = currentFile?._id ?? currentFile?.id;
+
   useEffect(() => {
-    fetch(`${API}/fmrinii/slices`)
+    const params = new URLSearchParams();
+    if (patientId) params.set('patientId', patientId);
+    if (fileId) params.set('fileId', fileId);
+    const qs = params.toString();
+    fetch(`${API}/fmrinii/slices${qs ? `?${qs}` : ''}`)
       .then((r) => r.json())
       .then((d) => {
         const list = Array.isArray(d?.slices) ? d.slices : [];
@@ -19,7 +27,7 @@ export function MRISlicePopup({ visible, sliceIndex }) {
       })
       .catch(() => setSlices([]))
       .finally(() => setLoading(false));
-  }, []);
+  }, [patientId, fileId]);
 
   const index = Math.max(0, Math.min(sliceIndex, slices.length - 1));
   const current = slices[index];
@@ -53,7 +61,7 @@ export function MRISlicePopup({ visible, sliceIndex }) {
             </>
           ) : (
             <div className="mri-slice-popup-empty">
-              No slices in sample_data/MRI/fmrinii. Add .jpg files.
+              No files for this patient yet.
             </div>
           )}
         </div>

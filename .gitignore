@@ -17,3 +17,13 @@ hardware/.pio/
 .cursor/
 frontend/sample_data/MRI/fmrinii/*.jpg
 frontend/sample_data/MRI/fmrinii/*.jpeg
+frontend/sample_data/MRI/fmrinii2/*.jpg
+frontend/sample_data/MRI/fmrinii2/*.jpeg
+frontend/sample_data/MRI/fmrinii3/*.jpg
+frontend/sample_data/MRI/fmrinii3/*.jpeg
+frontend/sample_data/MRI/fmrinii4/*.jpg
+frontend/sample_data/MRI/fmrinii4/*.jpeg
+frontend/sample_data/MRI/fmrinii5/*.jpg
+frontend/sample_data/MRI/fmrinii5/*.jpeg
+frontend/sample_data/MRI/fmrinii6/*.jpg
+frontend/sample_data/MRI/fmrinii6/*.jpeg

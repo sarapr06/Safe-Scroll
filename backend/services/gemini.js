@@ -195,6 +195,7 @@ ${blocks}`;
   try {
     const rawText = await callGeminiREST(GEMINI_MODEL, prompt);
     const arr = parseBatchResponse(rawText);
+    const arrLen = Array.isArray(arr) ? arr.length : 0;
     const result = {};
     files.forEach((f, i) => {
       const item = Array.isArray(arr) && arr[i] ? arr[i] : null;
@@ -202,6 +203,10 @@ ${blocks}`;
       result[id] = item && typeof item === 'object'
         ? { summary: item, ...item }
         : { error: 'No summary returned', keyFindings: [], abnormalVitals: [], coreMetrics: {}, verbalSummary: '' };
+      // #region agent log
+      const vb = item?.verbalSummary ?? '';
+      fetch('http://127.0.0.1:7242/ingest/3d69c74c-0a08-469c-8865-cd53c1d488d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'gemini.js:batchItem',message:'batch item',data:{idx:i,id,arrLen,hasItem:!!item,hasError:!!result[id]?.error,vbLen:vb?.length??0,vbSnippet:String(vb).slice(0,100)},timestamp:Date.now(),hypothesisId:'H6_H7'})}).catch(()=>{});
+      // #endregion
     });
     return result;
   } catch (e) {
