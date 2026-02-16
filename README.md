@@ -2,7 +2,7 @@
 
 **Touchless patient hub** — Navigate and summarize patient files with hand gestures. Built for MakeUofT with Valentine's theme.
 
-**Demo**: https://drive.google.com/file/d/1_aSUWBk7ZmAHjh0D114siD2IcsHjcXz4/view?usp=sharing 
+**Demo**: https://drive.google.com/file/d/12KXmJ_7dawNNkTCB7LVqSBAhQppWE1dO/view?usp=sharing 
 
 ## Quick Start
 
