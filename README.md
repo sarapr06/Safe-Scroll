@@ -53,10 +53,3 @@ Use your webcam for touchless navigation. While scrolling through patients, gest
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for full system design.
 
-## Prizes We're Going For 🏆
-
-- Best Use of Gemini API
-- Best Use of Presage
-- Best Use of ElevenLabs
-- Best Use of MongoDB Atlas
-- Valentine's Theme Prize 💕
